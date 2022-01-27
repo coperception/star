@@ -1,6 +1,12 @@
 # Multi-Agent-Autoencoder
 
-We implement lowerbound, upperbound, when2com, who2com, V2VNet as our benchmark detectors. Please see more details in our paper.
+We implement multi-agent encoder: the input is a single-view voxelized point cloud, and the output is a multi-view voxelized point cloud. There is information fusion at the intermediate feature layer/codeword. Our main target is to recover the complete scene via communicating a small-sized latent feature.
+
+utils/CoDetModule.py (def step(self,data,batch_size))
+utils/models/backbone/Backbone.py 
+utils/models/base/DetModelBase.py
+utils/models/base/FusionBase.py
+utils/models/base/IntermediateModelBase.py
 
 ## Preparation
 
