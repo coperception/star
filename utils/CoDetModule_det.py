@@ -38,7 +38,7 @@ from utils.min_norm_solvers import MinNormSolver
 import numpy
 
 class FaFModule(object):
-    def __init__(self, model, teacher, config, optimizer, criterion, kd_flag):
+    def __init__(self, model, mae, config, optimizer, criterion, kd_flag):
         self.MGDA = config.MGDA
         if self.MGDA:
             self.encoder = model[0]
@@ -51,15 +51,12 @@ class FaFModule(object):
         else:
             self.model = model
             self.kd_flag = kd_flag
-            if self.kd_flag == 1:
-                self.teacher = teacher
-                for k, v in self.teacher.named_parameters():
-                    v.requires_grad = False  # fix parameters
+            if True:
+                self.mae = mae
+                # for k, v in self.mae.named_parameters():
+                #     v.requires_grad = False  # fix parameters
             self.optimizer = optimizer
-            # self.scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 100, 150, 200], gamma=0.5)
-            # 50 epoch for each lr step is too long.
-            self.scheduler = torch.optim.lr_scheduler.StepLR(
-                optimizer, step_size=1, gamma=0.8)
+            self.scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[50, 100, 150, 200], gamma=0.5)
         self.criterion = criterion#{'cls_loss','loc_loss'}
 
         self.out_seq_len = config.pred_len
@@ -198,37 +195,44 @@ class FaFModule(object):
             return (loss_num,loss, loss_cls,loss_loc_1,loss_loc_2,loss_motion)
 
 
-    def step(self,data,batch_size):
+    def step(self,data,batch_size,output_thresh):
 
         bev_seq = data['bev_seq']
-        labels = data['bev_seq_teacher']
+        labels = data['labels']
+        # labels = data['bev_seq_teacher']
         reg_targets = data['reg_targets']
         reg_loss_mask = data['reg_loss_mask']
         anchors = data['anchors']
         trans_matrices = data['trans_matrices']
         num_agent = data['num_agent']
-        #print(batch_size)
 
         # with torch.autograd.set_detect_anomaly(True):
-        # print(bev_seq.shape, trans_matrices.shape, num_agent.shape)
-        # print(num_agent)
-        result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
-        # print(result.shape)#[batch_size*5, 13(channel), 256(h), 256(w)]
-        
+        bev_completion = self.mae(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
+        #print(bev_completion.shape)
+        bev_completion = bev_completion.permute(0, 2, 3, 1).unsqueeze(1)
+        if output_thresh is not None:
+            output_thresh = torch.Tensor([output_thresh]).cuda()
+            bev_completion = (bev_completion > output_thresh).float()
+        #print(bev_completion.shape, bev_seq.shape)
+        result = self.model(bev_completion)
+        #print(bev_completion.shape, bev_seq.shape)
 
-        labels = labels.permute(0, 1, 4, 2, 3).squeeze()  # (Batch, seq, z, h, w)
-        # print(labels.shape)
-        mse_loss = nn.MSELoss()
-        bce_loss = nn.BCELoss()
-        ce_loss = nn.CrossEntropyLoss()
-        # bce_loss = nn.BCEWithLogitsLoss()
-        L1_loss = nn.L1Loss()
-        smoothL1_loss = nn.SmoothL1Loss()
+        labels = labels.view(result['cls'].shape[0],-1,result['cls'].shape[-1])
+
+        N = bev_seq.shape[0]
+
+        loss_collect = self.loss_calculator(result,anchors,reg_loss_mask,reg_targets,labels,N)
+        loss_num = loss_collect[0]
+        if loss_num == 3:
+            loss_num,loss, loss_cls,loss_loc_1,loss_loc_2 = loss_collect
+        elif loss_num ==2:
+            loss_num,loss, loss_cls,loss_loc = loss_collect
+        elif loss_num == 4:
+            loss_num,loss, loss_cls,loss_loc_1,loss_loc_2,loss_motion = loss_collect
+
+        # labels = labels.permute(0, 1, 4, 2, 3).squeeze()  # (Batch, seq, z, h, w)
+        # mse_loss = nn.MSELoss()
         # loss = 10000*mse_loss(result, labels)
-        # loss = 10000*bce_loss(result, labels)
-        # loss = 10000*L1_loss(result, labels)
-        # loss = 10000*smoothL1_loss(result, labels)
-        loss = 10000*bce_loss(result, labels)
 
         if self.MGDA:
             self.optimizer_encoder.zero_grad()
@@ -241,27 +245,55 @@ class FaFModule(object):
             loss.backward()
             self.optimizer.step()
 
-        return loss
+        # return loss
+        if self.config.pred_type in ['motion','center'] and not self.only_det:
+            if self.config.motion_state:
+                return loss.item(),loss_cls.item(),loss_loc_1.item(),loss_loc_2.item(), loss_motion.item()
+            else:
+                return loss.item(),loss_cls.item(),loss_loc_1.item(),loss_loc_2.item()
+        else:
+            return loss.item(),loss_cls.item(),loss_loc.item()
+
 
     # TODO: extract methods
     # normal case (pre & intermediate)
-    def predict_all(self,data,batch_size,validation=True):
+    def predict_all(self,data,batch_size,output_thresh,validation=True):
         NUM_AGENT = 5
         bev_seq = data['bev_seq']
         vis_maps = data['vis_maps']
         trans_matrices = data['trans_matrices']
         num_agent = data['num_agent']
         num_sensor = num_agent[0, 0]
+        multi_view_bev_seq = data['multi_view_bev_seq']
 
-        if self.config.flag.startswith('when2com') or self.config.flag.startswith('who2com'):
-            if self.config.split == 'train':
-                result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size, training=True)
-            else:
-                result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size, inference=self.config.inference, training=False)
-        elif self.config.flag.startswith('disco'):
-            result, save_agent_weight_list = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
-        else:
-            result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
+        bev_completion = self.mae(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
+        if output_thresh is not None:
+            output_thresh = torch.Tensor([output_thresh]).cuda()
+            bev_completion = (bev_completion > output_thresh).float()
+        #print(bev_completion.shape)
+        bev_completion = bev_completion.permute(0, 2, 3, 1).unsqueeze(1)
+        #print(bev_completion.shape, bev_seq.shape)
+        result = self.model(bev_completion)
+
+        bev_com = bev_completion.detach().cpu().numpy()
+        
+        bev_gt = multi_view_bev_seq.detach().cpu().numpy()
+
+        #if self.MGDA:
+        #    x = self.encoder(bev_seq)
+        #    result = self.head(x)
+        #else:
+        #    result = self.model(bev_seq, trans_matrices, num_agent_tensor, batch_size=batch_size)
+            #result = self.model(bev_seq)
+        # if self.config.flag.startswith('when2com') or self.config.flag.startswith('who2com'):
+        #     if self.config.split == 'train':
+        #         result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size, training=True)
+        #     else:
+        #         result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size, inference=self.config.inference, training=False)
+        # elif self.config.flag.startswith('disco'):
+        #     result, save_agent_weight_list = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
+        # else:
+        #     result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
 
         # TODO: extract method 1 below ==============================================
         N = bev_seq.shape[0]
@@ -333,7 +365,7 @@ class FaFModule(object):
             if self.config.flag.startswith('disco'):
                 return loss.item(),loss_cls.item(),loss_loc.item(),seq_results, save_agent_weight_list
             else:
-                return loss.item(),loss_cls.item(),loss_loc.item(),seq_results
+                return loss.item(),loss_cls.item(),loss_loc.item(),seq_results, bev_com, bev_gt
         else:
             return seq_results
 

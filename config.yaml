@@ -1,0 +1,44 @@
+data: /mnt/NAS/home/qifang/datasets/V2X-Sim-1.0-trainval
+
+train:
+  split: train
+  batch: 4
+  nepoch: 20
+  nworker: 2
+  lr: 0.001
+  log: True
+  logpath: logs/test_mae
+  # logpath that will be used to save the code and the model
+  resume:
+  resume_teacher:
+  layer: 
+  #layer num for communication
+    # - 1
+    - 2
+    # - 3
+  layer1_channel: 64
+  #channel num for layer 1(128x128), default 64
+  layer2_channel: 128 
+  #channel num for layer 2(64x64), default 128
+  layer3_channel: 256 
+  #channel num for layer 3(32x32), default 256
+  warp_flag: True
+  kd_flag: 0
+  kd_weight: 100000
+  gnn_iter_times: 3
+  com: sum
+  bound: lowerbound
+
+
+eval:
+  split : test
+  sample_num: -1
+  # -1 means all the samples
+  nworker: 2
+  output_thresh: 0.5
+  # threshold for the output of visualization
+  visualization: True
+  metric: 
+    - rmse
+    - mae
+    - mse

@@ -32,8 +32,6 @@
  *
  */
 """
-import matplotlib
-matplotlib.use('Agg')
 import argparse
 
 import torch.optim as optim
@@ -42,12 +40,11 @@ from tqdm import tqdm
 
 from data.Dataset import V2XSIMDataset
 from data.config import Config, ConfigGlobal
-from utils.CoDetModule import *
+from utils.CoDetModule_det import *
 from utils.loss import *
 from utils.models import *
-
-from yaml_parser import parse_config
 import shutil
+
 
 class AverageMeter:
     def __init__(self, name, fmt=':f'):
@@ -126,7 +123,7 @@ def main(args):
     elif args.com == 'disco':
         model = DiscoNet(config, layer=args.layer, kd_flag=args.kd_flag)
     elif args.com == 'sum':
-        model = SumFusion(config, layer=args.layer, kd_flag=args.kd_flag, layer1_channel=args.layer1_channel, layer2_channel=args.layer2_channel, layer3_channel=args.layer3_channel)
+        model = SumFusion(config, layer=args.layer, kd_flag=args.kd_flag)
     elif args.com == 'mean':
         model = MeanFusion(config, layer=args.layer, kd_flag=args.kd_flag)
     elif args.com == 'max':
@@ -143,25 +140,20 @@ def main(args):
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     criterion = {'cls': SoftmaxFocalClassificationLoss(), 'loc': WeightedSmoothL1LocalizationLoss()}
 
-    if args.kd_flag == 1:
-        teacher = TeacherNet(config)
-        teacher = nn.DataParallel(teacher)
-        teacher = teacher.to(device)
-        faf_module = FaFModule(model, teacher, config, optimizer, criterion, args.kd_flag)
-        checkpoint_teacher = torch.load(args.resume_teacher)
-        start_epoch_teacher = checkpoint_teacher['epoch']
-        faf_module.teacher.load_state_dict(checkpoint_teacher['model_state_dict'])
-        print("Load teacher model from {}, at epoch {}".format(args.resume_teacher, start_epoch_teacher))
-        faf_module.teacher.eval()
-    else:
-        faf_module = FaFModule(model, model, config, optimizer, criterion, args.kd_flag)
-        
-    
+    mae = SumFusion(config, layer=args.layer, kd_flag=args.kd_flag)
+    mae = nn.DataParallel(mae)
+    mae = mae.to(device)
+    faf_module = FaFModule(model, mae, config, optimizer, criterion, args.kd_flag)
+    checkpoint_mae = torch.load(args.resume_mae)
+    start_epoch_mae = checkpoint_mae['epoch']
+    faf_module.mae.load_state_dict(checkpoint_mae['model_state_dict'])
+    print("Load teacher model from {}, at epoch {}".format(args.resume_mae, start_epoch_mae))
+    if not args.finetune:
+        faf_module.mae.eval()
 
-   
-    if args.resume != None:
+    if args.resume != '':
         model_save_path = args.resume[:args.resume.rfind('/')]
-
+        
         log_file_name = os.path.join(model_save_path, 'log.txt')
         saver = open(log_file_name, "a")
         saver.write("GPU number: {}\n".format(torch.cuda.device_count()))
@@ -183,14 +175,14 @@ def main(args):
         if need_log:
             model_save_path = check_folder(logger_root)
             model_save_path = check_folder(os.path.join(model_save_path, flag))
-
+            
             shutil.copyfile(args.config_file, os.path.join(model_save_path, 'config.yaml'))
-            shutil.copyfile('train_mae.py', os.path.join(model_save_path, 'train_mae.py'))
-            shutil.copyfile('eval_mae.py', os.path.join(model_save_path, 'eval_mae.py'))
+            shutil.copyfile('train_codet.py', os.path.join(model_save_path, 'train_codet.py'))
+            shutil.copyfile('test_codet.py', os.path.join(model_save_path, 'test_codet.py'))
             shutil.copyfile(args.config_file, os.path.join(model_save_path, 'config.yaml'))
             shutil.copytree('data/', os.path.join(model_save_path, 'data'))
             shutil.copytree('utils/', os.path.join(model_save_path, 'utils'))
-
+            
             log_file_name = os.path.join(model_save_path, 'log.txt')
             saver = open(log_file_name, "w")
             saver.write("GPU number: {}\n".format(torch.cuda.device_count()))
@@ -201,7 +193,6 @@ def main(args):
             saver.write(args.__repr__() + "\n\n")
             saver.flush()
 
-        
 
     for epoch in range(start_epoch, num_epochs + 1):
         lr = faf_module.optimizer.param_groups[0]['lr']
@@ -211,7 +202,8 @@ def main(args):
             saver.write("epoch: {}, lr: {}\t".format(epoch, lr))
             saver.flush()
 
-        running_loss_disp = AverageMeter('Total loss', ':.6f')
+        running_loss_disp = AverageMeter('Det loss', ':.6f')
+        running_loss_disp_ae = AverageMeter('AE loss', ':.6f')
         running_loss_class = AverageMeter('classification Loss', ':.6f')  # for cell classification error
         running_loss_loc = AverageMeter('Localization Loss', ':.6f')  # for state estimation error
 
@@ -252,23 +244,28 @@ def main(args):
             data['bev_seq_teacher'] = padded_voxel_points_teacher.to(device)
             data['kd_weight'] = args.kd_weight
 
-            loss = faf_module.step(data, batch_size)
+            loss, cls_loss, loc_loss  = faf_module.step(data, batch_size, args.output_thresh)
+            # Loss will be back-prop to autoencoder if mae.eval() is off.
             running_loss_disp.update(loss)
-            # running_loss_class.update(cls_loss)
-            # running_loss_loc.update(loc_loss)
+            running_loss_class.update(cls_loss)
+            running_loss_loc.update(loc_loss)
 
-            # if np.isnan(loss) or np.isnan(cls_loss) or np.isnan(loc_loss):
-            #     print(f'Epoch {epoch}, loss is nan: {loss}, {cls_loss} {loc_loss}')
-            #     sys.exit();
+            if np.isnan(loss) or np.isnan(cls_loss) or np.isnan(loc_loss):
+                print(f'Epoch {epoch}, loss is nan: {loss}, {cls_loss} {loc_loss}')
+                sys.exit();
 
             t.set_description("Epoch {},     lr {}".format(epoch, lr))
-            t.set_postfix(loss=running_loss_disp.avg)
+            t.set_postfix(cls_loss=running_loss_class.avg, loc_loss=running_loss_loc.avg)
 
         faf_module.scheduler.step()
 
         # save model
         if need_log:
+            
+
             saver.write("{}\t{}\t{}\n".format(running_loss_disp, running_loss_class, running_loss_loc))
+            
+                
             saver.flush()
             if config.MGDA:
                 save_dict = {'epoch': epoch,
@@ -285,19 +282,49 @@ def main(args):
                              'optimizer_state_dict': faf_module.optimizer.state_dict(),
                              'scheduler_state_dict': faf_module.scheduler.state_dict(),
                              'loss': running_loss_disp.avg}
-            torch.save(save_dict, os.path.join(model_save_path, 'epoch_' + str(epoch) + '.pth'))
+                if args.finetune:
+                    save_dict_ae = {'epoch': epoch,
+                                    'model_state_dict': faf_module.mae.state_dict(),
+                                    'optimizer_state_dict': faf_module.optimizer.state_dict(),
+                                    'scheduler_state_dict': faf_module.scheduler.state_dict(),
+                                    'loss': running_loss_disp.avg}
+                    torch.save(save_dict_ae, os.path.join(model_save_path, 'epoch_' + str(epoch) + '_finetune_ae' + '.pth'))
+                    
+
+            torch.save(save_dict, os.path.join(model_save_path, 'epoch_' + str(epoch) + ('_finetune' if args.finetune else '') + '_det.pth'))
+            
 
     if need_log:
         saver.close()
 
 
 if __name__ == "__main__":
-    torch.multiprocessing.set_sharing_strategy('file_system')
-    
+    # TODO: extract argument parser as a common function for train & test
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_file', default='config.yaml', type=str,
-                        help='The path to the config file')
+    parser.add_argument('-d', '--data', default='/mnt/NAS/home/qifang/datasets/V2X-Sim-1.0-trainval/train', type=str,
+                        help='The path to the preprocessed sparse BEV training data')
+    parser.add_argument('--batch', default=4, type=int, help='Batch size')
+    parser.add_argument('--nepoch', default=100, type=int, help='Number of epochs')
+    parser.add_argument('--nworker', default=2, type=int, help='Number of workers')
+    parser.add_argument('--lr', default=0.001, type=float, help='Initial learning rate')
+    parser.add_argument('--log', action='store_true', help='Whether to log')
+    parser.add_argument('--logpath', help='The path to the output log file')
+    parser.add_argument('--resume', default='', type=str,
+                        help='The path to the saved model that is loaded to resume training')
+    parser.add_argument('--resume_mae', type=str,
+                        help='The path to the saved MAE model that is loaded to resume training')
+    parser.add_argument('--layer', type=int, nargs='+', help='Communicate which layer in the single layer com mode')
+    parser.add_argument('--warp_flag', action='store_true', help='Whether to use pose info for Ｗhen2com')
+    parser.add_argument('--kd_flag', default=0, type=int, help='Whether to enable distillation (only DiscNet is 1 )')
+    parser.add_argument('--kd_weight', default=100000, type=int, help='KD loss weight')
+    parser.add_argument('--gnn_iter_times', default=3, type=int, help='Number of message passing for V2VNet')
+    parser.add_argument('--visualization', default=True, help='Visualize validation result')
+    parser.add_argument('--com', default='', type=str, help='disco/when2com/v2v/sum/mean/max/cat/agent')
+    parser.add_argument('--bound', type=str, default='lowerbound', 
+                        help='The input setting: lowerbound -> single-view or upperbound -> multi-view')
+    parser.add_argument('--output_thresh', default=0.1, type=float, help='Output threshold for mae')
+    parser.add_argument('--finetune', action='store_true', help='Whether to finetune auto-encoder')
+    torch.multiprocessing.set_sharing_strategy('file_system')
     args = parser.parse_args()
-    args = parse_config(args.config_file, 'train')
     print(args)
     main(args)

@@ -31,27 +31,36 @@ class DetModelBase(nn.Module):
         feat_mat = torch.cat(tuple(feat_list), 0)
         return feat_mat
 
-    def get_feature_maps_and_size(self, encoded_layers: tuple):
-        feature_maps = encoded_layers[3]
+    def get_feature_maps_size(self, feature_maps: tuple):
+        # feature_maps = encoded_layers[3]
 
-        size_tuple = (
-            (1, 32, 256, 256),
-            (1, 64, 128, 128),
-            (1, 128, 64, 64),
-            (1, 2, 32, 32),
-            (1, 512, 16, 16)
-        )
-        size = size_tuple[self.layer]
+        # size_tuple = (
+        #     (1, 32, 256, 256),
+        #     (1, 64, 128, 128),
+        #     (1, 128, 64, 64),
+        #     (1, 2, 32, 32),
+        #     (1, 512, 16, 16)
+        # )
+        # NOTE: self.layer is fixed(3)
+        # size = size_tuple[self.layer]
+        # FIX: size should be from actual layer shape rather than be from a fixed tuple list
+        size = list(feature_maps.shape)
+        # NOTE: batch size will change the shape[0]. We need to manually set it to 1.
+        size[0] = 1
+        size = tuple(size)
 
-        return feature_maps, size
+        # return feature_maps, size
+        return size
 
     # get feat maps for each agent [10 512 16 16] -> [2 5 512 16 16]
     def build_feature_list(self, batch_size: int, feat_maps: dict) -> list:
         feature_map = {}
+        # [5,256,32,32]
         feature_list = []
 
         for i in range(self.agent_num):
             feature_map[i] = torch.unsqueeze(feat_maps[batch_size * i:batch_size * (i + 1)], 1)
+            # feature_map[i]: [1,1,256,32,32]
             feature_list.append(feature_map[i])
 
         return feature_list

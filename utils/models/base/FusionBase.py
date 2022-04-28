@@ -2,8 +2,8 @@ from utils.models.base.IntermediateModelBase import IntermediateModelBase
 
 
 class FusionBase(IntermediateModelBase):
-    def __init__(self, config, layer=3, in_channels=13, kd_flag=True):
-        super(FusionBase, self).__init__(config, layer, in_channels, kd_flag)
+    def __init__(self, config, layer=3, in_channels=13, kd_flag=True, layer1_channel=64, layer2_channel=128, layer3_channel=256):
+        super(FusionBase, self).__init__(config, layer, in_channels, kd_flag, layer1_channel, layer2_channel, layer3_channel)
         self.num_agent = 0
 
     def fusion(self):
@@ -14,38 +14,50 @@ class FusionBase(IntermediateModelBase):
         bevs = bevs.permute(0, 1, 4, 2, 3)  # (Batch, seq, z, h, w)
         encoded_layers = self.u_encoder(bevs)
         device = bevs.device
-
-        feat_maps, size = super().get_feature_maps_and_size(encoded_layers)
-
-        # print(feat_maps[0,0])
-
-        feat_list = super().build_feature_list(batch_size, feat_maps)
-
-        local_com_mat = super().build_local_communication_matrix(
-            feat_list)  # [2 5 512 16 16] [batch, agent, channel, height, width]
-        local_com_mat_update = super().build_local_communication_matrix(feat_list)  # to avoid the inplace operation
-
-        for b in range(batch_size):
-            self.num_agent = num_agent_tensor[b, 0]
-            for i in range(self.num_agent):
-                self.tg_agent = local_com_mat[b, i]
-                self.neighbor_feat_list = []
-                self.neighbor_feat_list.append(self.tg_agent)
-                all_warp = trans_matrices[b, i]  # transformation [2 5 5 4 4]
-
-                super().build_neighbors_feature_list(b, i, all_warp, self.num_agent, local_com_mat,
-                                                     device, size)
-
-                # feature update
-                local_com_mat_update[b, i] = self.fusion()
-
-        # weighted feature maps is passed to decoder
-        feat_fuse_mat = super().agents_to_batch(local_com_mat_update)
-        # print(feat_fuse_mat[0,0])
-
-        # x = super().get_decoded_layers([encoded_layers[0], encoded_layers[1], encoded_layers[2], encoded_layers[3]], feat_fuse_mat[:,0], feat_fuse_mat[:,1], batch_size)
         
-        x = self.decoder(encoded_layers[0], encoded_layers[1], encoded_layers[2], feat_fuse_mat, batch_size)
+        for layer_num in self.layer:
+            feat_maps = encoded_layers[layer_num]
+            # print(feat_maps.shape)
+            size = super().get_feature_maps_size(encoded_layers[layer_num])
+            # feat_maps: [num_agent, channel, 32, 32]([5,256,32,32])
+            # size: [1,256,32,32]
+
+            # print(feat_maps[0,0])
+
+            feat_list = super().build_feature_list(batch_size, feat_maps)
+            # [[1,1,256,32,32]x5]
+            # print(feat_list)
+            local_com_mat = super().build_local_communication_matrix(
+                feat_list)  # [2 5 512 16 16] [batch, agent, channel, height, width]
+            # print(local_com_mat.shape) [1,5,256,32,32]
+            local_com_mat_update = super().build_local_communication_matrix(feat_list)  # to avoid the inplace operation
+
+            for b in range(batch_size):
+                self.num_agent = num_agent_tensor[b, 0]
+                for i in range(self.num_agent):
+                    self.tg_agent = local_com_mat[b, i]
+                    # print(self.tg_agent.shape) [256,32,32] 
+                    self.neighbor_feat_list = []
+                    self.neighbor_feat_list.append(self.tg_agent)
+                    all_warp = trans_matrices[b, i]  # transformation [2 5 5 4 4]
+                    # print(all_warp.shape)[5,4,4]
+                    super().build_neighbors_feature_list(b, i, all_warp, self.num_agent, local_com_mat,
+                                                        device, size)
+
+                    # feature update
+                    local_com_mat_update[b, i] = self.fusion()
+
+            # weighted feature maps is passed to decoder
+            feat_fuse_mat = super().agents_to_batch(local_com_mat_update)
+            # print(feat_fuse_mat[0,0])
+
+            # x = super().get_decoded_layers([encoded_layers[0], encoded_layers[1], encoded_layers[2], encoded_layers[3]], feat_fuse_mat[:,0], feat_fuse_mat[:,1], batch_size)
+            
+            # x = self.decoder(encoded_layers[0], encoded_layers[1], encoded_layers[2], feat_fuse_mat, batch_size)
+            
+            encoded_layers[layer_num] = feat_fuse_mat
+        
+        x = self.decoder(encoded_layers, batch_size)
 
         return x
 

@@ -358,7 +358,7 @@ class VAE(nn.Module):
         return res_x
 
 class Backbone(nn.Module):
-    def __init__(self, height_feat_size):
+    def __init__(self, height_feat_size, layer1_channel=64, layer2_channel=128, layer3_channel=256):
         super().__init__()
         self.conv_pre_1 = nn.Conv2d(height_feat_size, 32, kernel_size=3, stride=1, padding=1)
         self.conv_pre_2 = nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1)
@@ -375,21 +375,30 @@ class Backbone(nn.Module):
         self.conv2_2 = nn.Conv2d(128, 128, kernel_size=3, stride=1, padding=1)
 
         self.conv3_1 = nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1)
+        
+        # keep feature map size
+        # self.conv3_1 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
         self.conv3_2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
-
+        
+        # channel compress for layer 1(128x128x64)
         # ----
-        self.conv_mu_1 = nn.Conv2d(256, 128, kernel_size=1, stride=1, padding=0)
-        self.bn_mu_1 = nn.BatchNorm2d(128)
-
-        self.conv_mu_2 = nn.Conv2d(128, 64, kernel_size=1, stride=1, padding=0)
-        self.bn_mu_2 = nn.BatchNorm2d(64)
-
-        self.conv_mu_3 = nn.Conv2d(64, 16, kernel_size=1, stride=1, padding=0)
-        self.bn_mu_3 = nn.BatchNorm2d(16)
-
-        self.conv_mu_4 = nn.Conv2d(16, 2, kernel_size=1, stride=1, padding=0)
-        self.bn_mu_4 = nn.BatchNorm2d(2)
+        self.conv_mu_1= nn.Conv2d(64, layer1_channel, kernel_size=1, stride=1, padding=0)
+        self.bn_mu_1 = nn.BatchNorm2d(layer1_channel)
         #-----
+        
+        # channel compress for layer 2(64x64x128)
+        # ----
+        self.conv_mu_2 = nn.Conv2d(128, layer2_channel, kernel_size=1, stride=1, padding=0)
+        self.bn_mu_2 = nn.BatchNorm2d(layer2_channel)
+        #-----
+
+        # channel compress for layer 3(32x32x256)
+        # ----
+        self.conv_mu_3 = nn.Conv2d(256, layer3_channel, kernel_size=1, stride=1, padding=0)
+        self.bn_mu_3 = nn.BatchNorm2d(layer3_channel)
+        #-----
+        
+        
 
         # ----
         # self.conv_var_1 = nn.Conv2d(256, 128, kernel_size=1, stride=1, padding=0)
@@ -408,19 +417,26 @@ class Backbone(nn.Module):
         # self.conv4_1 = nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1)
         # self.conv4_2 = nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1)
 
-        self.conv_global_1 = nn.Conv2d(2, 16, kernel_size=1, stride=1, padding=0)
-        self.bn_global_1 = nn.BatchNorm2d(16)
 
-        self.conv_global_2 = nn.Conv2d(16, 64, kernel_size=1, stride=1, padding=0)
-        self.bn_global_2 = nn.BatchNorm2d(64)
-
-        self.conv_global_3 = nn.Conv2d(64, 128, kernel_size=1, stride=1, padding=0)
-        self.bn_global_3 = nn.BatchNorm2d(128)
-
-        self.conv_global_4 = nn.Conv2d(128, 256, kernel_size=1, stride=1, padding=0)
-        self.bn_global_4 = nn.BatchNorm2d(256)
-
+        # channel up for layer 1(128x128)
         #-------------
+        self.conv_global_1 = nn.Conv2d(layer1_channel, 64, kernel_size=1, stride=1, padding=0)
+        self.bn_global_1 = nn.BatchNorm2d(64)
+        #-------------
+        
+        # channel up for layer 2(64x64)
+        #-------------
+        self.conv_global_2 = nn.Conv2d(layer2_channel, 128, kernel_size=1, stride=1, padding=0)
+        self.bn_global_2 = nn.BatchNorm2d(128)
+        #-------------
+       
+        # channel up for layer 3([32x32x2] -> [32x32x256])
+        #-------------
+        self.conv_global_3 = nn.Conv2d(layer3_channel, 256, kernel_size=1, stride=1, padding=0)
+        self.bn_global_3 = nn.BatchNorm2d(256)
+        #-------------
+
+
         # self.conv5_1 = nn.Conv2d(512 + 256, 256, kernel_size=3, stride=1, padding=1)
         # self.conv5_2 = nn.Conv2d(256, 256, kernel_size=3, stride=1, padding=1)
 
@@ -494,25 +510,48 @@ class Backbone(nn.Module):
         # -- STC block 4
         # x_4 = F.relu(self.bn4_1(self.conv4_1(x_3)))
         # x_4 = F.relu(self.bn4_2(self.conv4_2(x_4)))
+        
+        # -- Block VAE for layer 1
+        # down to 128x128xlayer1_channel
+        x_mu_1 = F.relu(self.bn_mu_1(self.conv_mu_1(x_1)))
+        
+        
+        # -- Block VAE for layer 2
+        # down to 64x64xlayer2_channel
+        x_mu_2 = F.relu(self.bn_mu_2(self.conv_mu_2(x_2)))
 
-        # -- Block VAE
-        x_mu_1 = F.relu(self.bn_mu_1(self.conv_mu_1(x_3)))
+        # -- Block VAE for layer 3
+        # down to 32x32xlayer3_channel
+        x_mu_3 = F.relu(self.bn_mu_3(self.conv_mu_3(x_3)))
+        
 
-        x_mu_2 = F.relu(self.bn_mu_2(self.conv_mu_2(x_mu_1)))
-
-        x_mu_3 = F.relu(self.bn_mu_3(self.conv_mu_3(x_mu_2)))
-
-        x_mu_4 = F.relu(self.bn_mu_4(self.conv_mu_4(x_mu_3)))
-
-        return [x, x_1, x_2, x_mu_4]
-
-    def decode(self, x, x_1, x_2, x_mu_4, batch, requires_adaptive_max_pool3d=False):
-
-        x_global_1 = F.relu(self.bn_global_1(self.conv_global_1(x_mu_4)))
-        x_global_2 = F.relu(self.bn_global_2(self.conv_global_2(x_global_1)))
-        x_global_3 = F.relu(self.bn_global_3(self.conv_global_3(x_global_2)))
-        x_global_4 = F.relu(self.bn_global_4(self.conv_global_4(x_global_3)))
-
+        return [x, x_mu_1, x_mu_2, x_mu_3]
+    
+    flag = True
+    def decode(self, x, x_1, x_2, x_3, batch, requires_adaptive_max_pool3d=False):
+        # ------------------Channel Recovery------------------
+        if self.flag:
+            print("layer1 shape:", x_1.shape)
+            print("layer2 shape:", x_2.shape)
+            print("layer3 shape:", x_3.shape) 
+            self.flag = False
+        
+        # channel up for layer 1
+        # from 128x128xlayer1_channel to 128x128xlayer1_channel
+        x_global_1 = F.relu(self.bn_global_1(self.conv_global_1(x_1))) 
+        x_1 = x_global_1
+        
+        # channel up for layer 2
+        # from 64x64xlayer2_channel to 64x64xlayer2_channel
+        x_global_2 = F.relu(self.bn_global_2(self.conv_global_2(x_2)))
+        x_2 = x_global_2
+        
+        # channel up for layer 3
+        # from 32x32xlayer3_channel to 32x32xlayer3_channel
+        x_global_3 = F.relu(self.bn_global_3(self.conv_global_3(x_3)))
+        x_3 = x_global_3
+        
+        
         # -------------------------------- Decoder Path --------------------------------
         # x_5 = F.relu(self.bn5_1(self.conv5_1(torch.cat((F.interpolate(x_4, scale_factor=(2, 2)), x_3), dim=1))))
         # x_5 = F.relu(self.bn5_2(self.conv5_2(x_5)))
@@ -522,8 +561,11 @@ class Backbone(nn.Module):
         x_2 = F.adaptive_max_pool3d(x_2, (1, None, None)) if requires_adaptive_max_pool3d else x_2
         x_2 = x_2.permute(0, 2, 1, 3, 4).contiguous()
         x_2 = x_2.view(-1, x_2.size(2), x_2.size(3), x_2.size(4)).contiguous()
+        # print(x_2.shape)
+        # [5, 128, 64, 64]
 
-        x_6 = F.relu(self.bn6_1(self.conv6_1(torch.cat((F.interpolate(x_global_4, scale_factor=(2, 2)), x_2), dim=1))))
+        x_6 = F.relu(self.bn6_1(self.conv6_1(torch.cat((F.interpolate(x_3, scale_factor=(2, 2)), x_2), dim=1))))
+        # x_6 = F.relu(self.bn6_1(self.conv6_1(torch.cat((x_3, x_2), dim=1))))
         x_6 = F.relu(self.bn6_2(self.conv6_2(x_6)))
 
         x_1 = x_1.view(batch, -1, x_1.size(1), x_1.size(2), x_1.size(3))
@@ -545,7 +587,10 @@ class Backbone(nn.Module):
         x_8 = F.relu(self.bn8_2(self.conv8_2(x_8)))
 
         x_9 = F.relu(self.bn9_1(self.conv9_1(x_8)))
-        res_x = F.relu(self.bn9_2(self.conv9_2(x_9)))
+        # print(self.bn9_2(self.conv9_2(x_9)).min(), self.bn9_2(self.conv9_2(x_9)).max(), self.bn9_2(self.conv9_2(x_9)).mean())
+        # res_x = F.relu(self.bn9_2(self.conv9_2(x_9)))
+
+        res_x = F.sigmoid(self.bn9_2(self.conv9_2(x_9)))
 
         return res_x
 
@@ -562,18 +607,23 @@ class STPN_KD(DetBackbone):
 
 
 class LidarEncoder(Backbone):
-    def __init__(self, height_feat_size=13):
-        super().__init__(height_feat_size)
+    def __init__(self, height_feat_size=13, layer1_channel=64, layer2_channel=128, layer3_channel=256):
+        super().__init__(height_feat_size, layer1_channel, layer2_channel, layer3_channel)
 
     def forward(self, x):
         return super().encode(x)
 
 
 class LidarDecoder(Backbone):
-    def __init__(self, height_feat_size=13):
-        super().__init__(height_feat_size)
+    def __init__(self, height_feat_size=13, layer1_channel=64, layer2_channel=128, layer3_channel=256):
+        super().__init__(height_feat_size, layer1_channel, layer2_channel, layer3_channel)
 
-    def forward(self, x, x_1, x_2, x_mu_4, batch):
+    def forward(self, feature_maps, batch):
+        # feature_maps: [x, x_1, x_2, x_mu_4]
+        x = feature_maps[0]
+        x_1 = feature_maps[1]
+        x_2 = feature_maps[2]
+        x_mu_4 = feature_maps[3]
         return super().decode(x, x_1, x_2, x_mu_4, batch)
 
 
