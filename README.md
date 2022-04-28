@@ -265,6 +265,6 @@ $PATH_TO_DET_CKPT/lowerbound/eval/epoch_{epoch_num}{_[log_tag](if specified)}
 #### Example:
 
 ```bash
-python test_codet.py --data /mnt/NAS/home/qifang/datasets/V2X-Sim-1.0-trainval/test --log  --resume_mae logs/test_det/epoch_100_finetune_ae.pth --resume logs/test_det/epoch_100_finetune_det.pth --layer 2 --output_thresh 0.1
+python test_codet.py --data /mnt/NAS/home/qifang/datasets/V2X-Sim-1.0-trainval/test --log  --resume_mae logs/test_det/lowerbound/epoch_100_finetune_ae.pth --resume logs/test_det/lowerbound/epoch_100_finetune_det.pth --layer 2 --output_thresh 0.1
 ```
 
