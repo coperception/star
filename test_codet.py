@@ -359,7 +359,7 @@ if __name__ == "__main__":
     parser.add_argument('--tracking', action='store_true')
     parser.add_argument('--box_com', action='store_true')
     parser.add_argument('--output_thresh', default=0.1, type=float, help='Output threshold for mae')
-    parser.add_argument('--log_tag', type=str, help='log tag for eval')
+    parser.add_argument('--log_tag', default='', type=str, help='log tag for eval')
     torch.multiprocessing.set_sharing_strategy('file_system')
     args = parser.parse_args()
     print(args)
