@@ -1,2 +1,4 @@
-logs/
-*.pyc
+__pycache__
+dist/
+site/
+*.egg-info/
