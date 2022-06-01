@@ -36,7 +36,7 @@ def main(args):
     device_num = torch.cuda.device_count()
     print("device number", device_num)
 
-    if args.com in {"mean", "max", "cat", 'sum'}:
+    if args.com in {"mean", "max", "cat", "sum", "v2v"}:
         flag = args.com
     else:
         raise ValueError(f"com: {args.com} is not supported")
@@ -50,7 +50,7 @@ def main(args):
         config=config,
         config_global=config_global,
         split="train",
-        bound='both',
+        bound="both",
         kd_flag=args.kd_flag,
         no_cross_road=args.no_cross_road,
     )
@@ -70,7 +70,7 @@ def main(args):
             layer=args.layer,
             kd_flag=args.kd_flag,
             num_agent=num_agent,
-            train_completion=True
+            train_completion=True,
         )
     elif args.com == "mean":
         model = MeanFusion(
@@ -78,7 +78,7 @@ def main(args):
             layer=args.layer,
             kd_flag=args.kd_flag,
             num_agent=num_agent,
-            train_completion=True
+            train_completion=True,
         )
     elif args.com == "max":
         model = MaxFusion(
@@ -86,13 +86,22 @@ def main(args):
             layer=args.layer,
             kd_flag=args.kd_flag,
             num_agent=num_agent,
-            train_completion=True
+            train_completion=True,
         )
     elif args.com == "cat":
         model = CatFusion(
             config,
             layer=args.layer,
             kd_flag=args.kd_flag,
+            num_agent=num_agent,
+            train_completion=True,
+        )
+    elif args.com == "v2v":
+        model = V2VNet(
+            config,
+            gnn_iter_times=args.gnn_iter_times,
+            layer=args.layer,
+            layer_channel=256,
             num_agent=num_agent,
             train_completion=True
         )
@@ -120,7 +129,7 @@ def main(args):
     if args.resume:
         model_save_path = args.resume[: args.resume.rfind("/")]
 
-        log_file_name = os.path.join(model_save_path, "log_teacher.txt")
+        log_file_name = os.path.join(model_save_path, "log_completion.txt")
         saver = open(log_file_name, "a")
         saver.write("GPU number: {}\n".format(torch.cuda.device_count()))
         saver.flush()
@@ -139,7 +148,7 @@ def main(args):
         print("Load model from {}, at epoch {}".format(args.resume, start_epoch - 1))
     else:
         if need_log:
-            log_file_name = os.path.join(model_save_path, "log_teacher.txt")
+            log_file_name = os.path.join(model_save_path, "log_completion.txt")
             saver = open(log_file_name, "w")
             saver.write("GPU number: {}\n".format(torch.cuda.device_count()))
             saver.flush()
@@ -250,7 +259,10 @@ def main(args):
                     "loss": running_loss_disp.avg,
                 }
             torch.save(
-                save_dict, os.path.join(model_save_path, "teacher_epoch_" + str(epoch) + ".pth")
+                save_dict,
+                os.path.join(
+                    model_save_path, "completion_epoch_" + str(epoch) + ".pth"
+                ),
             )
 
     if need_log:
@@ -291,6 +303,12 @@ if __name__ == "__main__":
         help="Whether to enable distillation (only DiscNet is 1 )",
     )
     parser.add_argument("--kd_weight", default=100000, type=int, help="KD loss weight")
+    parser.add_argument(
+        "--gnn_iter_times",
+        default=3,
+        type=int,
+        help="Number of message passing for V2VNet",
+    )
     parser.add_argument(
         "--com", default="", type=str, help="disco/when2com/v2v/sum/mean/max/cat/agent"
     )

@@ -61,7 +61,7 @@ def main(args):
         num_agent -= 1
 
     if args.com == "sum":
-        teacher = SumFusion(
+        model_completion = SumFusion(
             config,
             layer=args.layer,
             kd_flag=args.kd_flag,
@@ -69,7 +69,7 @@ def main(args):
             train_completion=True,
         )
     elif args.com == "mean":
-        teacher = MeanFusion(
+        model_completion = MeanFusion(
             config,
             layer=args.layer,
             kd_flag=args.kd_flag,
@@ -77,7 +77,7 @@ def main(args):
             train_completion=True,
         )
     elif args.com == "max":
-        teacher = MaxFusion(
+        model_completion = MaxFusion(
             config,
             layer=args.layer,
             kd_flag=args.kd_flag,
@@ -85,18 +85,26 @@ def main(args):
             train_completion=True,
         )
     elif args.com == "cat":
-        teacher = CatFusion(
+        model_completion = CatFusion(
             config,
             layer=args.layer,
             kd_flag=args.kd_flag,
             num_agent=num_agent,
             train_completion=True,
         )
+    elif args.com == "v2v":
+        model_completion = V2VNet(
+            config,
+            gnn_iter_times=args.gnn_iter_times,
+            layer=args.layer,
+            layer_channel=256,
+            num_agent=num_agent,
+        )
     else:
         raise NotImplementedError("Fusion type: {args.com} not implemented")
 
-    if not args.teacher_trainable:
-        for param in teacher.parameters():
+    if not args.fine_tune:
+        for param in model_completion.parameters():
             param.requires_grad = False
 
     model = FaFNet(
@@ -107,9 +115,9 @@ def main(args):
     )
 
     model = nn.DataParallel(model)
-    teacher = nn.DataParallel(teacher)
+    model_completion = nn.DataParallel(model_completion)
     model = model.to(device)
-    teacher = teacher.to(device)
+    model_completion = model_completion.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     criterion = {
@@ -117,26 +125,28 @@ def main(args):
         "loc": WeightedSmoothL1LocalizationLoss(),
     }
 
-    optimizer_teacher = optim.Adam(teacher.parameters(), lr=args.lr)
-    criterion_teacher = {
-        "cls": SoftmaxFocalClassificationLoss(),
-        "loc": WeightedSmoothL1LocalizationLoss(),
-    }
+    optimizer_completion = optim.Adam(model_completion.parameters(), lr=args.lr)
 
     faf_module = FaFModule(model, model, config, optimizer, criterion, args.kd_flag)
-    
-    # TODO: completion_module
-    faf_module_teacher = FaFModule(
-        teacher, teacher, config, optimizer_teacher, criterion_teacher, args.kd_flag
+
+    faf_module_completion = FaFModule(
+        model_completion,
+        model_completion,
+        config,
+        optimizer_completion,
+        criterion,
+        args.kd_flag,
     )
-    teacher_checkpoint = torch.load(args.resume_teacher)
-    teacher_start_epoch = teacher_checkpoint["epoch"] + 1
-    faf_module_teacher.model.load_state_dict(teacher_checkpoint["model_state_dict"])
-    faf_module_teacher.optimizer.load_state_dict(
-        teacher_checkpoint["optimizer_state_dict"]
+    checkpoint_completion = torch.load(args.resume_completion)
+    completion_start_epoch = checkpoint_completion["epoch"] + 1
+    faf_module_completion.model.load_state_dict(
+        checkpoint_completion["model_state_dict"]
     )
-    faf_module_teacher.scheduler.load_state_dict(
-        teacher_checkpoint["scheduler_state_dict"]
+    faf_module_completion.optimizer.load_state_dict(
+        checkpoint_completion["optimizer_state_dict"]
+    )
+    faf_module_completion.scheduler.load_state_dict(
+        checkpoint_completion["scheduler_state_dict"]
     )
 
     cross_path = "no_cross" if args.no_cross_road else "with_cross"
@@ -226,10 +236,9 @@ def main(args):
         running_loss_loc = AverageMeter(
             "Localization Loss", ":.6f"
         )  # for state estimation error
-        running_loss_teacher = AverageMeter("Teacher loss", ":.6f")
 
         faf_module.model.train()
-        faf_module_teacher.model.train()
+        faf_module_completion.model.train()
 
         t = tqdm(training_data_loader)
         for sample in t:
@@ -277,23 +286,28 @@ def main(args):
                 "trans_matrices": trans_matrices,
             }
 
-            teacher_loss, completed_point_cloud = faf_module_teacher.step_completion(
-                data, batch_size, trainable=args.teacher_trainable
+            _, completed_point_cloud = faf_module_completion.step_completion(
+                data, batch_size, trainable=False
             )
-            running_loss_teacher.update(teacher_loss)
 
             completed_point_cloud = completed_point_cloud.unsqueeze(1)
             completed_point_cloud = completed_point_cloud.permute(0, 1, 3, 4, 2)
 
             # substitute with the completed data
-            # FIXME
-            data["bev_seq"] = completed_point_cloud.clone().detach().to(device)
-
-            print(faf_module_teacher.model.module.u_encoder.conv1_1.weight)
+            data["bev_seq"] = completed_point_cloud
 
             loss, cls_loss, loc_loss = faf_module.step(
                 data, batch_size, num_agent=num_agent
             )
+
+            # completion model weight update
+            if args.fine_tune:
+                if config.MGDA:
+                    faf_module_completion.optimizer_encoder.step()
+                    faf_module_completion.optimizer_head.step()
+                else:
+                    faf_module_completion.optimizer.step()
+
             running_loss_disp.update(loss)
             running_loss_class.update(cls_loss)
             running_loss_loc.update(loc_loss)
@@ -306,11 +320,10 @@ def main(args):
             t.set_postfix(
                 cls_loss=running_loss_class.avg,
                 loc_loss=running_loss_loc.avg,
-                teacher_loss=running_loss_teacher.avg,
             )
 
         faf_module.scheduler.step()
-        faf_module_teacher.scheduler.step()
+        faf_module_completion.scheduler.step()
 
         # save model
         if need_log:
@@ -319,7 +332,6 @@ def main(args):
                     running_loss_disp,
                     running_loss_class,
                     running_loss_loc,
-                    running_loss_teacher,
                 )
             )
             saver.flush()
@@ -336,15 +348,15 @@ def main(args):
                     "loss": running_loss_disp.avg,
                 }
 
-                teacher_save_dict = {
-                    "epoch": epoch + teacher_start_epoch - 1,
-                    "encoder_state_dict": faf_module_teacher.encoder.state_dict(),
-                    "optimizer_encoder_state_dict": faf_module_teacher.optimizer_encoder.state_dict(),
-                    "scheduler_encoder_state_dict": faf_module_teacher.scheduler_encoder.state_dict(),
-                    "head_state_dict": faf_module_teacher.head.state_dict(),
-                    "optimizer_head_state_dict": faf_module_teacher.optimizer_head.state_dict(),
-                    "scheduler_head_state_dict": faf_module_teacher.scheduler_head.state_dict(),
-                    "loss": running_loss_teacher.avg,
+                save_dict_completion = {
+                    "epoch": epoch + completion_start_epoch - 1,
+                    "encoder_state_dict": faf_module_completion.encoder.state_dict(),
+                    "optimizer_encoder_state_dict": faf_module_completion.optimizer_encoder.state_dict(),
+                    "scheduler_encoder_state_dict": faf_module_completion.scheduler_encoder.state_dict(),
+                    "head_state_dict": faf_module_completion.head.state_dict(),
+                    "optimizer_head_state_dict": faf_module_completion.optimizer_head.state_dict(),
+                    "scheduler_head_state_dict": faf_module_completion.scheduler_head.state_dict(),
+                    "loss": running_loss_disp.avg,
                 }
 
             else:
@@ -356,19 +368,19 @@ def main(args):
                     "loss": running_loss_disp.avg,
                 }
 
-                teacher_save_dict = {
-                    "epoch": epoch + teacher_start_epoch - 1,
-                    "model_state_dict": faf_module_teacher.model.state_dict(),
-                    "optimizer_state_dict": faf_module_teacher.optimizer.state_dict(),
-                    "scheduler_state_dict": faf_module_teacher.scheduler.state_dict(),
-                    "loss": running_loss_teacher.avg,
+                save_dict_completion = {
+                    "epoch": epoch + completion_start_epoch - 1,
+                    "model_state_dict": faf_module_completion.model.state_dict(),
+                    "optimizer_state_dict": faf_module_completion.optimizer.state_dict(),
+                    "scheduler_state_dict": faf_module_completion.scheduler.state_dict(),
+                    "loss": running_loss_disp.avg,
                 }
             torch.save(
                 save_dict, os.path.join(model_save_path, "epoch_" + str(epoch) + ".pth")
             )
             torch.save(
-                teacher_save_dict,
-                os.path.join(model_save_path, "teacher_epoch_" + str(epoch) + ".pth"),
+                save_dict_completion,
+                os.path.join(model_save_path, "completion_epoch_" + str(epoch) + ".pth"),
             )
 
     if need_log:
@@ -397,10 +409,10 @@ if __name__ == "__main__":
         help="The path to the saved model that is loaded to resume training",
     )
     parser.add_argument(
-        "--resume_teacher",
+        "--resume_completion",
         default="",
         type=str,
-        help="The path to the saved teacher model that is loaded to resume training",
+        help="The path to the saved completion model that is loaded to resume training",
     )
     parser.add_argument(
         "--layer",
@@ -431,10 +443,10 @@ if __name__ == "__main__":
         help="The path to automatically reload the latest pth",
     )
     parser.add_argument(
-        "--teacher_trainable",
+        "--fine_tune",
         default=0,
         type=int,
-        help="Teacher trainable or not",
+        help="Fine tune the completion model or not",
     )
 
     torch.multiprocessing.set_sharing_strategy("file_system")

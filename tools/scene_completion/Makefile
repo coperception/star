@@ -12,11 +12,11 @@ logpath := logs
 nepoch := 20
 # If given, the model will resume from its most recent (by modification time) check point
 auto_resume_path := $(logpath)
-teacher_trainable := 1
+fine_tune := 1
 
 
 train_completion:
 	python train_completion.py --data $(training_data) --com $(com) --log --batch $(batch_size) --nepoch $(nepoch) --logpath $(logpath)
 
 train_det:
-	python train_codet.py --data $(training_data) --com $(com) --log --batch $(batch_size) --auto_resume_path $(auto_resume_path) --nepoch $(nepoch) --logpath $(logpath) --resume_teacher $(logpath)/$(com)/with_cross/teacher_epoch_1.pth --teacher_trainable $(teacher_trainable)
+	python train_codet.py --data $(training_data) --com $(com) --log --batch $(batch_size) --auto_resume_path $(auto_resume_path) --nepoch $(nepoch) --logpath $(logpath) --resume_completion $(logpath)/$(com)/with_cross/completion_epoch_1.pth --fine_tune $(fine_tune)

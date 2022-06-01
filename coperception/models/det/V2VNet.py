@@ -21,6 +21,7 @@ class V2VNet(IntermediateModelBase):
         num_agent=5,
         compress_level=0,
         only_v2i=False,
+        train_completion=False,
     ):
         super().__init__(
             config,
@@ -29,6 +30,7 @@ class V2VNet(IntermediateModelBase):
             num_agent=num_agent,
             compress_level=compress_level,
             only_v2i=only_v2i,
+            train_completion=train_completion,
         )
 
         self.layer_channel = layer_channel
@@ -43,6 +45,7 @@ class V2VNet(IntermediateModelBase):
             stride=1,
         )
         self.compress_level = compress_level
+        self.train_completion = train_completion
 
     def forward(self, bevs, trans_matrices, num_agent_tensor, batch_size=1):
         # trans_matrices [batch 5 5 4 4]
@@ -127,5 +130,9 @@ class V2VNet(IntermediateModelBase):
         )
         x = decoded_layers[0]
 
-        cls_pred, loc_preds, result = super().get_cls_loc_result(x)
+        if self.train_completion:
+            result = x
+        else:
+            cls_preds, loc_preds, result = super().get_cls_loc_result(x)
+
         return result
