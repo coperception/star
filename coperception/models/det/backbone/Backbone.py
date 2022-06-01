@@ -6,7 +6,7 @@ import torch
 class Backbone(nn.Module):
     """The backbone class that contains encode and decode function"""
 
-    def __init__(self, height_feat_size, compress_level=0):
+    def __init__(self, height_feat_size, compress_level=0, train_completion=False):
         super().__init__()
         self.conv_pre_1 = nn.Conv2d(
             height_feat_size, 32, kernel_size=3, stride=1, padding=1
@@ -69,6 +69,14 @@ class Backbone(nn.Module):
 
         self.bn8_1 = nn.BatchNorm2d(32)
         self.bn8_2 = nn.BatchNorm2d(32)
+
+        self.train_completion = train_completion
+        if train_completion:
+            self.conv9_1 = nn.Conv2d(32, 13, kernel_size=1, stride=1, padding=0)
+            self.bn9_1 = nn.BatchNorm2d(13)
+
+            self.conv9_2 = nn.Conv2d(13, 13, kernel_size=1, stride=1, padding=0)
+            self.bn9_2 = nn.BatchNorm2d(13)
 
         self.compress_level = compress_level
         if compress_level > 0:
@@ -236,6 +244,12 @@ class Backbone(nn.Module):
         )
         res_x = F.relu(self.bn8_2(self.conv8_2(x_8)))
 
+        if self.train_completion:
+            res_x = F.relu(self.bn9_1(self.conv9_1(res_x)))
+            res_x = F.relu(self.bn9_2(self.conv9_2(res_x)))
+
+        # TODO: apply sigmoid
+
         if kd_flag:
             return [res_x, x_7, x_6, x_5]
         else:
@@ -270,8 +284,8 @@ class LidarEncoder(Backbone):
 class LidarDecoder(Backbone):
     """The decoder class. Decodes input features in forward pass."""
 
-    def __init__(self, height_feat_size=13):
-        super().__init__(height_feat_size)
+    def __init__(self, height_feat_size=13, train_completion=False):
+        super().__init__(height_feat_size, train_completion=train_completion)
 
     def forward(self, x, x_1, x_2, x_3, x_4, batch, kd_flag=False):
         return super().decode(x, x_1, x_2, x_3, x_4, batch, kd_flag)

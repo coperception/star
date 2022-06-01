@@ -71,15 +71,20 @@ class Config(object):
         self.only_det = only_det
         self.code_type = code_type
         self.loss_type = loss_type  # corner_loss faf_loss
+        self.flag = ""
 
         # The specifications for BEV maps
         # self.voxel_size = (0.25, 0.25, 0.4)
         self.voxel_size = (0.375, 0.375, 0.4)
         area_range = 48.0
         self.area_extents = (
-            np.array([[-area_range, area_range], [-area_range, area_range], [-8.0, -3.0]])
+            np.array(
+                [[-area_range, area_range], [-area_range, area_range], [-8.0, -3.0]]
+            )
             if is_cross_road
-            else np.array([[-area_range, area_range], [-area_range, area_range], [-3.0, 2.0]])
+            else np.array(
+                [[-area_range, area_range], [-area_range, area_range], [-3.0, 2.0]]
+            )
         )
         self.is_cross_road = is_cross_road
         self.past_frame_skip = 3  # when generating the BEV maps, how many history frames need to be skipped

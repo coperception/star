@@ -11,9 +11,11 @@ class FusionBase(IntermediateModelBase):
         num_agent=5,
         compress_level=0,
         only_v2i=False,
+        train_completion=False,
     ):
-        super().__init__(config, layer, in_channels, kd_flag, num_agent, compress_level, only_v2i)
+        super().__init__(config, layer, in_channels, kd_flag, num_agent, compress_level, only_v2i, train_completion)
         self.num_agent = 0
+        self.train_completion = train_completion
 
     def fusion(self):
         raise NotImplementedError(
@@ -67,7 +69,10 @@ class FusionBase(IntermediateModelBase):
         )
         x = decoded_layers[0]
 
-        cls_preds, loc_preds, result = super().get_cls_loc_result(x)
+        if self.train_completion:
+            result = x
+        else:
+            cls_preds, loc_preds, result = super().get_cls_loc_result(x)
 
         if self.kd_flag == 1:
             return (result, *decoded_layers, feat_fuse_mat)

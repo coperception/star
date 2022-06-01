@@ -217,10 +217,10 @@ class V2XSimDet(Dataset):
                 vis_maps = np.zeros_like(self.vis_maps_meta)
                 reg_loss_mask = np.zeros_like(self.reg_loss_mask_meta)
 
-                if self.bound == "lowerbound":
+                if self.bound == "lowerbound" or self.bound == 'both':
                     padded_voxel_points = np.zeros_like(self.padded_voxel_points_meta)
 
-                if self.kd_flag or self.bound == "upperbound":
+                if self.kd_flag or self.bound == "upperbound" or self.bound == 'both':
                     padded_voxel_points_teacher = np.zeros_like(
                         self.padded_voxel_points_meta
                     )

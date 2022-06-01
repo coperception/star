@@ -16,8 +16,9 @@ class CatFusion(FusionBase):
         num_agent=5,
         compress_level=0,
         only_v2i=False,
+        train_completion=False,
     ):
-        super().__init__(config, layer, in_channels, kd_flag, num_agent, compress_level, only_v2i)
+        super().__init__(config, layer, in_channels, kd_flag, num_agent, compress_level, only_v2i, train_completion)
         self._modulation_layer_3 = ModulationLayer3()
 
     def fusion(self):

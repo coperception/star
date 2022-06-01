@@ -309,6 +309,50 @@ class FaFModule(object):
         else:
             return loss.item(), loss_cls.item(), loss_loc.item()
 
+    # used by scene completion task
+    def step_completion(self, data, batch_size, loss_fn='mse', trainable=False):
+        bev_seq = data['bev_seq']
+        trans_matrices = data['trans_matrices']
+        num_agent = data['num_agent']
+
+        result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
+
+        loss_fn_dict = {
+            'mse': nn.MSELoss(),
+            'bce': nn.BCELoss(),
+            'ce': nn.CrossEntropyLoss(),
+            'l1': nn.L1Loss(),
+            'smooth_l1': nn.SmoothL1Loss(),
+        }
+
+        loss = -1
+        if trainable:
+            labels = data['bev_seq_teacher']
+            labels = labels.permute(0, 1, 4, 2, 3).squeeze()  # (Batch, seq, z, h, w)
+            loss = 10000 * loss_fn_dict[loss_fn](result, labels)
+
+            if self.MGDA:
+                self.optimizer_encoder.zero_grad()
+                self.optimizer_head.zero_grad()
+                loss.backward()
+                self.optimizer_encoder.step()
+                self.optimizer_head.step()
+            else:
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
+
+        return loss, result
+
+    def infer_completion(self, data, batch_size):
+        bev_seq = data['bev_seq']
+        trans_matrices = data['trans_matrices']
+        num_agent = data['num_agent']
+
+        result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
+
+        return result
+
     def get_kd_loss(self, batch_size, data, fused_layer, num_agent, x_5, x_6, x_7):
         if self.kd_flag:
             bev_seq_teacher = data["bev_seq_teacher"]
