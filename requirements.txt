@@ -11,3 +11,4 @@ mmcv
 terminaltables
 shapely
 coperception
+timm==0.3.2

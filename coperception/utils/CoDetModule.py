@@ -5,6 +5,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+# Juexiao add for mae -----
+from coperception.utils.maeutil.misc import NativeScalerWithGradNormCount as NativeScaler
+import math
+# -------------------------
+
 
 class FaFModule(object):
     def __init__(self, model, teacher, config, optimizer, criterion, kd_flag):
@@ -33,6 +38,10 @@ class FaFModule(object):
                 optimizer, milestones=[50, 100, 150, 200], gamma=0.5
             )
         self.criterion = criterion  # {'cls_loss','loc_loss'}
+
+        ## Used by MAE, added by Juexiao
+        self.mae_loss_scaler = NativeScaler()
+        ## ------------------
 
         self.out_seq_len = config.pred_len
         self.category_num = config.category_num
@@ -352,6 +361,46 @@ class FaFModule(object):
         result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
 
         return result
+
+    # Used my MAE model in scene completion, added by Juexiao
+    def step_mae_completion(self, data, batch_size, mask_ratio, loss_fn='mse', trainable = False):
+        # figure out the dimensions: squeeze, permute etc
+        bev_seq = data['bev_seq'].squeeze(1).permute(0,3,1,2)
+        bev_seq_next = data['bev_seq_next'] # [bxa, ts-1, H, W, C]
+        if bev_seq_next.dim()>2:
+            bev_seq_next = bev_seq_next.permute(0,1,4,2,3) # [bxa, ts-1, C, H, W]
+        bev_teacher = data['bev_seq_teacher'].squeeze(1).permute(0,3,1,2)
+        
+        num_agent_tensor = data['num_agent']
+        trans_matrices = data['trans_matrices']
+        
+        with torch.cuda.amp.autocast(enabled=False):
+            loss, result, mask1, fused = self.model(bev_seq, 
+                                                    bev_seq_next, 
+                                                    bev_teacher, 
+                                                    trans_matrices, 
+                                                    num_agent_tensor,
+                                                    batch_size,
+                                                    mask_ratio=mask_ratio)
+        
+        loss_value = loss.item()
+
+        if not math.isfinite(loss_value):
+            print("Loss is {}, stopping training".format(loss_value))
+            # torch.save(bev_seq.cpu(), "lossnan-bev.pt")
+            # torch.save(self.model.cpu(), "lossnan-mae.pt")
+            # torch.save(result.cpu(), "lossnan-pred.pt")
+            # torch.save(mask.cpu(), "lossnan-mask.pt")
+            sys.exit(1)
+
+        if trainable:
+            self.mae_loss_scaler(loss, self.optimizer, parameters=self.model.parameters(),
+                        update_grad=True)
+            self.optimizer.zero_grad()
+            # loss.backward()
+            # self.optimizer.step()
+
+        return loss_value, result
 
     def get_kd_loss(self, batch_size, data, fused_layer, num_agent, x_5, x_6, x_7):
         if self.kd_flag:
