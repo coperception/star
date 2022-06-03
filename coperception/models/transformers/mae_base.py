@@ -113,7 +113,9 @@ class MultiAgentMaskedAutoencoderViT(nn.Module):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim), requires_grad=False)  # fixed sin-cos embedding
         self.time_stamp = time_stamp
+        # temporal embeddings
         self.temp_embed = nn.Parameter(torch.zeros(1, self.time_stamp, embed_dim)) # learnable temporal embeddings for 2 time stamp
+        self.decoder_temp_embed = nn.Parameter(torch.zeros(1, self.time_stamp, 1, decoder_embed_dim)) # learnable temporal embeddings for 2 time stamp
 
         self.blocks = nn.ModuleList([
             Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, qk_scale=None, norm_layer=norm_layer)
@@ -154,14 +156,7 @@ class MultiAgentMaskedAutoencoderViT(nn.Module):
         self.norm_pix_loss = norm_pix_loss
         self.in_chans = in_chans
         self.L1_Loss = nn.L1Loss(reduction="none")
-        if mask_method == "random":
-            print("do random masking")
-            self.masking_handle = self.more_random_masking
-        elif mask_method == "complement":
-            print("do complement masking")
-            self.masking_handle = self.more_complement_masking
-        else:
-            raise NotImplementedError(mask_method) 
+        
 
         self.initialize_weights()
 
