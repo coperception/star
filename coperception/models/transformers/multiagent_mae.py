@@ -24,7 +24,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from timm.models.vision_transformer import PatchEmbed, Block
-from coperception.models.mae_base import *
+from coperception.models.transformers.mae_base import *
 from coperception.utils.maeutil.pos_embed import get_2d_sincos_pos_embed
 import math
 
@@ -190,7 +190,7 @@ class FusionMultiAgentMAEViT(MultiAgentMaskedAutoencoderViT):
         overwrite the original forward_decoder, now input latent are fused
         """
         # add pos embed
-        x = x + self.decoder_pos_embed
+        x = x + self.decoder_pos_embed[:, 1:, :]
 
         # apply Transformer blocks
         for blk in self.decoder_blocks:
@@ -359,7 +359,8 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
     def __init__(self, img_size=224, patch_size=16, in_chans=3,
                  embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-                 mlp_ratio=4., norm_layer=nn.LayerNorm, decoder_head="conv3", norm_pix_loss=False, time_stamp=1, mask_method="random"):
+                 mlp_ratio=4., norm_layer=nn.LayerNorm, decoder_head="conv3", norm_pix_loss=False, time_stamp=1, 
+                 mask_method="random"):
         super(AmortizedFusionMMAEViT, self).__init__(
                 img_size=img_size, 
                 patch_size=patch_size, 
@@ -379,8 +380,19 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         # for neighbor agents' features
         self.patch_h = 0
         self.patch_w = 0
-        self.masking_handle = self.amortized_random_masking
-        self.unmasking_handle = self.amortized_random_unmasking
+        if mask_method == "random":
+            print("do random masking")
+            self.masking_handle = self.amortized_random_masking
+            self.unmasking_handle = self.amortized_random_unmasking
+        elif mask_method == "complement":
+            print("do complement masking")
+            self.masking_handle = self.amortized_complement_masking
+            self.unmasking_handle = self.amortized_complement_unmasking
+        else:
+            raise NotImplementedError(mask_method)
+        # send radio w.r.t to already masked sequence
+        # self.send_ratio = send_ratio
+        # self.send_num = 0
 
     def amortized_random_masking(self, x_ts, mask_ratio):
         """
@@ -400,18 +412,18 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         """
         # fill with mask tokens
         mask_tokens = self.mask_token.repeat(x_ts.shape[0], ids_restore.shape[1] + 1 - x_ts.shape[1], 1)
-        x_ts_ = torch.cat([x_ts[:, 1:, :], mask_tokens], dim=1)  # no cls token
+        x_ts_ = torch.cat([x_ts, mask_tokens], dim=1)  # no cls token
         x_ts_ = torch.gather(x_ts_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x_ts.shape[2]))  # unshuffle
         BAT, L, D = x_ts_.size()
         assert BAT%self.time_stamp == 0, (BAT, self.time_stamp)
-        BA = BAT / self.time_stamp
+        BA = BAT // self.time_stamp
         # add temporal embedding
         x_ts_ = x_ts_.reshape(BA, self.time_stamp, L, D)
         x_ts_ = x_ts_ + self.decoder_temp_embed #check dim
 
-        # prepare CLS token, now we use CLS of the current timestamp
-        x_ts_cls = x_ts[:,:1,:].reshape(BA, self.time_stamp, 1, D)
-        x_cls = x_ts_cls[:, 0, :, :] # [BA, 1, D]
+        # # prepare CLS token, now we use CLS of the current timestamp
+        # x_ts_cls = x_ts[:,:1,:].reshape(BA, self.time_stamp, 1, D)
+        # x_cls = x_ts_cls[:, 0, :, :] # [BA, 1, D]
 
         # figure out how to fill in the other timestamp
         x_ts_unp = x_ts_.reshape(BA, self.time_stamp, self.patch_h, self.patch_w, x_ts_.shape[-1])
@@ -425,12 +437,12 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         for ti in range(self.time_stamp-1):
             # not filled previously but can be filled by ti+1
             mask_curr = reverse_mask[:,ti+1, :, :]
-            mask_select = (mask_filled==0.) & (mask_curr>0.) 
+            mask_select = ((mask_filled==0.) & (mask_curr>0.)).unsqueeze(-1)
             x_curr = torch.where(mask_select, x_ts_unp[:, ti+1, :, :, :], x_curr)
             mask_filled = mask_filled + mask_curr # update the mask
-        x_curr = x_curr.permute(0,3,1,2) #[BxA, C, H, W]
+        # x_curr = x_curr.permute(0,3,1,2) #[BxA, C, H, W]
      
-        return x_curr, x_cls
+        return x_curr
 
     def amortized_complement_masking(self, x_ts, mask_ratio):
         """
@@ -458,13 +470,15 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
             x_ts_masked = torch.gather(x_ts[:,ti,:,:], dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
             if ids_keep.size(1) < len_keep_each:
                 # padding
-                x_padded = torch.zeros(ids_keep.size(0), len_keep_each - ids_keep.size(1), D)
+                x_padded = torch.zeros(ids_keep.size(0), len_keep_each - ids_keep.size(1), D, device=x_ts.device)
+                # print("use padded", x_padded.size())
                 x_ts_masked = torch.cat((x_ts_masked, x_padded), dim=1)
             x_masked.append(x_ts_masked)
             mask[:, ti, len_keep_each*ti : min(len_keep_each*(ti+1), L)] = 0
             mask[:, ti, :] = torch.gather(mask[:, ti, :], dim=1, index=ids_restore)
-        x_masked = torch.stack(x_masked, dim=0).permute(1,0,2,3) #[BA, timestamp, L, D]
-        x_masked = x_masked.reshape(BAT, L, D)
+        x_masked = torch.stack(x_masked, dim=0).permute(1,0,2,3) #[BA, timestamp, mL, D]
+        x_masked = x_masked.reshape(BAT, -1, D)
+        # print(x_masked.size())
 
         return x_masked, mask, ids_restore
 
@@ -476,15 +490,15 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         restore, add temporal embedding
         NOTE: subtlety: because of complementary masking, this L can be padded at the end thus >= real L
         """
-        x_ts_ = x_ts[:, 1:, :]# remove cls token
+        x_ts_ = x_ts# remove cls token
         BAT, L, D = x_ts_.shape
         realL = ids_restore.size(1)
         BA = BAT // self.time_stamp
         x_ts_ = x_ts_.reshape(BA, self.time_stamp, L, D)
         x_ts_ = x_ts_ + self.decoder_temp_embed #check dim
-        # prepare CLS token, now we use CLS of the current timestamp
-        x_ts_cls = x_ts[:,:1,:].reshape(BA, self.time_stamp, 1, D)
-        x_cls = x_ts_cls[:, 0, :, :] # [BA, 1, D]
+        # # prepare CLS token, now we use CLS of the current timestamp
+        # x_ts_cls = x_ts[:,:1,:].reshape(BA, self.time_stamp, 1, D)
+        # x_cls = x_ts_cls[:, 0, :, :] # [BA, 1, D]
         x_restore = []
         for ti in range(self.time_stamp):
             x_restore.append(x_ts_[:,ti, :, :]) #[BA, L, D]
@@ -493,9 +507,7 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         x_restore = torch.gather(x_restore, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x_ts.shape[2]))
 
         feature_maps = x_restore.reshape(BA, self.patch_h, self.patch_w, D)
-        return feature_maps,  x_cls
-
-
+        return feature_maps
 
     def forward_fusion(self, x, mask, ids_restore, trans_matrices, num_agent_tensor, batch_size):
         """
@@ -510,7 +522,9 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         # # embed tokens
         x = self.decoder_embed(x)
         # -------
-        feature_maps, x_cls = self.unmasking_handle(x, mask, ids_restore)
+        feature_maps = self.unmasking_handle(x, mask, ids_restore)
+        # print("feature map size", feature_maps.size()) # [BAT, H, W, D]
+        feature_maps = feature_maps.permute(0,3,1,2)
         ## --- do fusion ---
         size = self.get_feature_maps_size(feature_maps)
         # print(size)
@@ -549,7 +563,7 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         fused_latent = feat_fuse_mat.permute(0,2,3,1).reshape(real_bs, self.patch_h*self.patch_w, chns)
         # print("fused latent size", fused_latent.size()) 
         # NxLxD
-        fused_latent = torch.cat([x_cls, fused_latent], dim=1)  # append cls token
+        # fused_latent = torch.cat([x_cls, fused_latent], dim=1)  # append cls token
         return fused_latent
 
 
@@ -561,7 +575,10 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         # cat x1 and x_next to encoder independently
         BA, C, H, W = x1.size()
         x1 = x1.unsqueeze(1)
-        x_ind = torch.cat((x1, x_next), dim=1) # [bxa, ts, C, H, W]
+        if self.time_stamp>1:
+            x_ind = torch.cat((x1, x_next), dim=1) # [bxa, ts, C, H, W]
+        else:
+            x_ind = x1
         # print(x_ind.size())
         assert x_ind.size(1) == self.time_stamp
         x_ind = x_ind.reshape(BA*self.time_stamp, C, H, W)
@@ -569,31 +586,36 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         x_ind = self.patch_embed(x_ind)
         x_ind = x_ind + self.pos_embed[:, 1:, :]
 
+        
         # amortized masking, complement and random
-        x_masked, mask, ids_restore = self.masking_handle(x_ind, mask_ratio)
+        # x_masked, mask, ids_restore = self.masking_handle(x_ind, mask_ratio)
         # print(x_masked.size())
         # print(mask.size())
 
         # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :]
-        cls_tokens = cls_token.expand(x_masked.shape[0], -1, -1)
-        x = torch.cat((cls_tokens, x_masked), dim=1)
+        # cls_token = self.cls_token + self.pos_embed[:, :1, :]
+        # cls_tokens = cls_token.expand(x_ind.shape[0], -1, -1)
+        # x = torch.cat((cls_tokens, x_ind), dim=1)
 
         # apply Transformer blocks
         for blk in self.blocks:
-            x = blk(x)
-        x = self.norm(x)
+            x_ind = blk(x_ind)
+        x = self.norm(x_ind) # [BAT, L, D]
         # compress for communication
-        x = self.compressor(x)
-
-        return x, mask, ids_restore
+        # TODO: mask ONLY for transmission, encode the complete sequence
+        x_masked, mask, ids_restore = self.masking_handle(x, mask_ratio)
+        # x = self.compressor(x)
+        # x_send = torch.cat((x[:,:1,:], x_masked), dim=1) # put [CLS] token back
+        x_send = self.compressor(x_masked)
+        
+        return x_send, mask, ids_restore
 
     def forward_decoder(self, x):
         """
         overwrite the original forward_decoder, now input latent are fused
         """
         # add pos embed
-        x = x + self.decoder_pos_embed
+        x = x + self.decoder_pos_embed[:, 1:, :]
 
         # apply Transformer blocks
         for blk in self.decoder_blocks:
@@ -601,11 +623,12 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         x = self.decoder_norm(x)
 
         # VERSION conv -----
-        x = x[:, 1:, :]
+        # x = x[:, 1:, :] # NO CLS anymore
         x = x.reshape(x.shape[0], self.patch_h, self.patch_w, x.shape[-1]) # (B, h, w, chns)
         x = x.permute(0, 3, 1, 2).contiguous() # (B, chns, h, w)
         # print("before pred size", x.size())
         x = self.decoder_pred(x)
+        # print("after pred size", x.size())
         # patchify back to accomodate
         x = self.patchify(x)
         # print("pred size", x.size())
@@ -618,6 +641,7 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
 
         """
         target = self.patchify(teacher)
+        # print("after patchify, teacher, pred size", target.size(), pred.size())
         if self.norm_pix_loss:
             mean = target.mean(dim=-1, keepdim=True)
             var = target.var(dim=-1, keepdim=True)
@@ -647,8 +671,8 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         fused_latent = self.forward_fusion(latent, mask, ids_restore, trans_matrices, num_agent_tensor, batch_size)
         pred = self.forward_decoder(fused_latent)
         loss = self.forward_loss(teacher, pred)
-        return loss, pred, mask, fused_latent[:, 1:, :]
-
+        result = self.unpatchify(pred)
+        return loss, result, mask, fused_latent[:, 1:, :]
 
 
 class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
@@ -678,8 +702,17 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         # for neighbor agents' features
         self.patch_h = 0
         self.patch_w = 0
-        self.masking_handle = self.amortized_random_masking
-        self.unmasking_handle = self.amortized_random_unmasking
+        
+        if mask_method == "random":
+            print("do random masking")
+            self.masking_handle = self.amortized_random_masking
+            self.unmasking_handle = self.amortized_random_unmasking
+        elif mask_method == "complement":
+            print("do complement masking")
+            self.masking_handle = self.amortized_complement_masking
+            self.unmasking_handle = self.amortized_complement_unmasking
+        else:
+            raise NotImplementedError(mask_method)
 
     def amortized_random_masking(self, x_ts, mask_ratio):
         """
@@ -694,42 +727,40 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         """
         Reverse masking with fillings from other timestamp, using mask and torch where
         x_ts: [BxAxts, L, D]
-        mask: [BxAxts, L]
-        ids_restore: [BxAxts, L]
+        mask: [BxAxts, L] -> full length L
+        ids_restore: [BxAxts, L] -> full length L
         """
+        # print(x_ts.size(), mask.size(), ids_restore.size())
         # fill with mask tokens
         mask_tokens = self.mask_token.repeat(x_ts.shape[0], ids_restore.shape[1] + 1 - x_ts.shape[1], 1)
-        x_ts_ = torch.cat([x_ts[:, 1:, :], mask_tokens], dim=1)  # no cls token
+        x_ts_ = torch.cat([x_ts, mask_tokens], dim=1)  # no cls token
         x_ts_ = torch.gather(x_ts_, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x_ts.shape[2]))  # unshuffle
         BAT, L, D = x_ts_.size()
         assert BAT%self.time_stamp == 0, (BAT, self.time_stamp)
-        BA = BAT / self.time_stamp
+        BA = BAT // self.time_stamp
         # add temporal embedding
         x_ts_ = x_ts_.reshape(BA, self.time_stamp, L, D)
         x_ts_ = x_ts_ + self.decoder_temp_embed #check dim
 
-        # prepare CLS token, now we use CLS of the current timestamp
-        x_ts_cls = x_ts[:,:1,:].reshape(BA, self.time_stamp, 1, D)
-        x_cls = x_ts_cls[:, 0, :, :] # [BA, 1, D]
-
         # figure out how to fill in the other timestamp
         x_ts_unp = x_ts_.reshape(BA, self.time_stamp, self.patch_h, self.patch_w, x_ts_.shape[-1])
-        
+        # print("x_ts_unp size", x_ts_unp.size())
         mask_unp = mask.reshape(mask.shape[0], self.patch_h, self.patch_w) #self.unpatchify(mask.unsqueeze(-1))
         # assert mask_unp.size(1) == 1, (mask_unp.size())
         mask_unp = mask_unp.reshape(BA, self.time_stamp, self.patch_h, self.patch_w) # [BxA, ts, H, W], 0 is kept, 1 is removed
         reverse_mask = 1. - mask_unp # 0 is removed, >0 is kept
         mask_filled = reverse_mask[:,0,:,:] # current timestamp, 
-        x_curr = x_ts_unp[:,0,:,:,:] #[BxA, H, W, C]
+        x_curr = x_ts_unp[:,0,:,:,:] #[BxA, h, w, D]
+        # print("x_curr size", x_curr.size())
         for ti in range(self.time_stamp-1):
             # not filled previously but can be filled by ti+1
             mask_curr = reverse_mask[:,ti+1, :, :]
-            mask_select = (mask_filled==0.) & (mask_curr>0.) 
+            mask_select = ((mask_filled==0.) & (mask_curr>0.)).unsqueeze(-1)
             x_curr = torch.where(mask_select, x_ts_unp[:, ti+1, :, :, :], x_curr)
             mask_filled = mask_filled + mask_curr # update the mask
         x_curr = x_curr.permute(0,3,1,2) #[BxA, C, H, W]
      
-        return x_curr, x_cls
+        return x_curr
 
     def amortized_complement_masking(self, x_ts, mask_ratio):
         """
@@ -757,13 +788,13 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
             x_ts_masked = torch.gather(x_ts[:,ti,:,:], dim=1, index=ids_keep.unsqueeze(-1).repeat(1, 1, D))
             if ids_keep.size(1) < len_keep_each:
                 # padding
-                x_padded = torch.zeros(ids_keep.size(0), len_keep_each - ids_keep.size(1), D)
+                x_padded = torch.zeros(ids_keep.size(0), len_keep_each - ids_keep.size(1), D, device=x_ts.device)
                 x_ts_masked = torch.cat((x_ts_masked, x_padded), dim=1)
             x_masked.append(x_ts_masked)
             mask[:, ti, len_keep_each*ti : min(len_keep_each*(ti+1), L)] = 0
             mask[:, ti, :] = torch.gather(mask[:, ti, :], dim=1, index=ids_restore)
         x_masked = torch.stack(x_masked, dim=0).permute(1,0,2,3) #[BA, timestamp, L, D]
-        x_masked = x_masked.reshape(BAT, L, D)
+        x_masked = x_masked.reshape(BAT, -1, D) # because the seq len is not L after masking
 
         return x_masked, mask, ids_restore
 
@@ -775,15 +806,12 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         restore, add temporal embedding
         NOTE: subtlety: because of complementary masking, this L can be padded at the end thus >= real L
         """
-        x_ts_ = x_ts[:, 1:, :]# remove cls token
+        x_ts_ = x_ts
         BAT, L, D = x_ts_.shape
         realL = ids_restore.size(1)
         BA = BAT // self.time_stamp
         x_ts_ = x_ts_.reshape(BA, self.time_stamp, L, D)
         x_ts_ = x_ts_ + self.decoder_temp_embed #check dim
-        # prepare CLS token, now we use CLS of the current timestamp
-        x_ts_cls = x_ts[:,:1,:].reshape(BA, self.time_stamp, 1, D)
-        x_cls = x_ts_cls[:, 0, :, :] # [BA, 1, D]
         x_restore = []
         for ti in range(self.time_stamp):
             x_restore.append(x_ts_[:,ti, :, :]) #[BA, L, D]
@@ -792,7 +820,7 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         x_restore = torch.gather(x_restore, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x_ts.shape[2]))
 
         feature_maps = x_restore.reshape(BA, self.patch_h, self.patch_w, D)
-        return feature_maps,  x_cls
+        return feature_maps
 
 
     def late_fusion(self, pred, trans_matrices, num_agent_tensor, batch_size):
@@ -839,7 +867,10 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         # cat x1 and x_next to encoder independently
         BA, C, H, W = x1.size()
         x1 = x1.unsqueeze(1)
-        x_ind = torch.cat((x1, x_next), dim=1) # [bxa, ts, C, H, W]
+        if self.time_stamp>1:
+            x_ind = torch.cat((x1, x_next), dim=1) # [bxa, ts, C, H, W]
+        else:
+            x_ind = x1
         # print(x_ind.size())
         assert x_ind.size(1) == self.time_stamp
         x_ind = x_ind.reshape(BA*self.time_stamp, C, H, W)
@@ -848,44 +879,50 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         x_ind = x_ind + self.pos_embed[:, 1:, :]
 
         # amortized masking, complement and random
-        x_masked, mask, ids_restore = self.masking_handle(x_ind, mask_ratio)
+        # x_masked, mask, ids_restore = self.masking_handle(x_ind, mask_ratio)
         # print(x_masked.size())
         # print(mask.size())
 
-        # append cls token
-        cls_token = self.cls_token + self.pos_embed[:, :1, :]
-        cls_tokens = cls_token.expand(x_masked.shape[0], -1, -1)
-        x = torch.cat((cls_tokens, x_masked), dim=1)
+        # # append cls token
+        # cls_token = self.cls_token + self.pos_embed[:, :1, :]
+        # cls_tokens = cls_token.expand(x_masked.shape[0], -1, -1)
+        # x = torch.cat((cls_tokens, x_masked), dim=1)
 
         # apply Transformer blocks
         for blk in self.blocks:
-            x = blk(x)
-        x = self.norm(x)
+            x_ind = blk(x_ind)
+        x = self.norm(x_ind)
         # compress for communication
-        x = self.compressor(x)
+        # TODO: mask ONLY for transmission, encode the complete sequence
+        x_masked, mask, ids_restore = self.masking_handle(x, mask_ratio)
+        x = self.compressor(x_masked)
 
         return x, mask, ids_restore
 
-    def forward_decoder(self, x):
+    def forward_decoder(self, latent, mask, ids_restore):
         """
         overwrite the original forward_decoder, now input latent are fused
         """
+        latent = self.decompressor(latent)
+        # # embed tokens
+        latent = self.decoder_embed(latent)
+
+        restored_latent = self.unmasking_handle(latent, mask, ids_restore)
+        restored_latent = restored_latent.reshape(restored_latent.size(0), self.patch_h*self.patch_w, -1)
+        # x = torch.cat([latent_cls, restored_latent], dim=1)
+
         # add pos embed
-        x = x + self.decoder_pos_embed
+        x = restored_latent + self.decoder_pos_embed[:, 1:, :]
 
         # apply Transformer blocks
         for blk in self.decoder_blocks:
             x = blk(x)
         x = self.decoder_norm(x)
 
-        # VERSION conv -----
-        x = x[:, 1:, :]
-        x = x.reshape(x.shape[0], self.patch_h, self.patch_w, x.shape[-1]) # (B, h, w, chns)
-        x = x.permute(0, 3, 1, 2).contiguous() # (B, chns, h, w)
-        # print("before pred size", x.size())
+        # VERSION mlp -----
         x = self.decoder_pred(x)
-        # patchify back to accomodate
-        x = self.patchify(x)
+        # remove cls token
+        # x = x[:, 1:, :]
         # print("pred size", x.size())
         # --------------------
         return x
@@ -913,20 +950,10 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         """
         p = self.patch_embed.patch_size[0]
         self.patch_h = self.patch_w = imgs1.shape[2]//p
-        # TODO: -----new model----
-        # encoder handles each timestamp seperately, decoder fuse them together. 
-        # temporal embedding add at the decoder side
-        # special take care of the mask ids
-        # implement a new model to do so.
-        # a) complement masking: no mask tokens
-        # b) random masking: fuse timestamps, [mask] fills the rest
-        # ------------------------
+        # print("image, patch h, w", imgs1.shape, self.patch_h, self.patch_w)
         latent, mask, ids_restore = self.forward_encoder(imgs1, imgs_next, mask_ratio)
-        # fused_latent = self.forward_fusion(latent, mask, ids_restore, trans_matrices, num_agent_tensor, batch_size)
-        restored_latent, latent_cls = self.unmasking_handle(latent, mask, ids_restore)
-        restored_latent.reshape(restored_latent.size(0), self.patch_h*self.patch_w, -1)
-        fused_latent = torch.cat([latent_cls, restored_latent], dim=1)
-        pred = self.forward_decoder(fused_latent)
+        # latent: [BAT, L, D]
+        pred = self.forward_decoder(latent, mask, ids_restore)
         loss = self.forward_loss(imgs1, pred)
         # result = self.unpatchify(pred)
         result = self.late_fusion(pred, trans_matrices, num_agent_tensor, batch_size)
@@ -941,9 +968,9 @@ def amo_individual_bev_multi_mae_vit_base_patch8_dec512d8b(**kwargs):
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="mlp", **kwargs)
     return model
 
-def amo_fusion_bev_multi_mae_vit_base_patch16_dec512d8b(**kwargs):
+def amo_fusion_bev_multi_mae_vit_base_patch8_dec512d8b(**kwargs):
     model = AmortizedFusionMMAEViT(
-        img_size=256, patch_size=16, in_chans=13, embed_dim=768, depth=12, num_heads=12,
+        img_size=256, patch_size=8, in_chans=13, embed_dim=768, depth=12, num_heads=12,
         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="conv3", **kwargs)
     return model
@@ -1011,4 +1038,4 @@ joint_bev_mae_vit_base_patch16_dec1024 = fusion_bev_multi_mae_vit_base_patch16_d
 ind_bev_mae_vit_base_patch8 = individual_bev_multi_mae_vit_base_patch8_dec512d8b
 # temporal amortized reconstruction
 amortized_ind_patch8 = amo_individual_bev_multi_mae_vit_base_patch8_dec512d8b
-amortized_joint_patch8 = amo_fusion_bev_multi_mae_vit_base_patch16_dec512d8b
+amortized_joint_patch8 = amo_fusion_bev_multi_mae_vit_base_patch8_dec512d8b

@@ -43,7 +43,8 @@ class ConvPred(nn.Module):
         # upsamping 128x128x128 -> 256x256x128
         x = F.interpolate(x, scale_factor=2, mode='bilinear') #, align_corners=True)
         # channel compression 128 -> 13
-        x = self.bn3(self.conv3(x))
+        # x = self.bn3(self.conv3(x))
+        x = torch.sigmoid(self.bn3(self.conv3(x)))
         return x
 
 # class ConvPred(nn.Module):
@@ -145,8 +146,12 @@ class MultiAgentMaskedAutoencoderViT(nn.Module):
         self.decoder_norm = norm_layer(decoder_embed_dim)
 
         if decoder_head == "mlp":
-            self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
-        # conv decodr pred
+            # self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
+            self.decoder_pred = nn.Sequential(
+                nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True),
+                nn.Sigmoid()
+            )
+        # conv decoder pred
         elif decoder_head == "conv3":
             self.decoder_pred = ConvPred(input_size=32, output_size=256, input_chans=512, output_chans=13)
         else:

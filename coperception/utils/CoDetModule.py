@@ -369,8 +369,9 @@ class FaFModule(object):
         bev_seq_next = data['bev_seq_next'] # [bxa, ts-1, H, W, C]
         if bev_seq_next.dim()>2:
             bev_seq_next = bev_seq_next.permute(0,1,4,2,3) # [bxa, ts-1, C, H, W]
+        # print(data['bev_seq_teacher'].size())
         bev_teacher = data['bev_seq_teacher'].squeeze(1).permute(0,3,1,2)
-        
+        # print("teacher size", bev_teacher.size())
         num_agent_tensor = data['num_agent']
         trans_matrices = data['trans_matrices']
         
@@ -382,6 +383,8 @@ class FaFModule(object):
                                                     num_agent_tensor,
                                                     batch_size,
                                                     mask_ratio=mask_ratio)
+        # print("result size", result.size())
+        # exit(1)
         
         loss_value = loss.item()
 

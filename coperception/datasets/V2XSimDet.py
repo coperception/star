@@ -628,7 +628,7 @@ class MultiTempV2XSimDet(V2XSimDet):
                 next_seq_file = self.seq_files[agent_id][nextframe_idx]
                 next_gt_data_handle = np.load(next_seq_file, allow_pickle=True)
                 if next_gt_data_handle == 0:
-                    padded_voxel_points_next_list.append(padded_voxel_points.copy())
+                    padded_voxel_points_next_list.append(padded_voxel_points[0].copy())
                     # next_trans_matrices = trans_matrices
                 else:
                     next_gt_dict = next_gt_data_handle.item()

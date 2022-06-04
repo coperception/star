@@ -13,6 +13,8 @@ from coperception.utils.loss import *
 from coperception.models.det import *
 from coperception.models.transformers import multiagent_mae
 from coperception.utils import AverageMeter
+import matplotlib
+matplotlib.use('Agg')
 
 # from mae script -----------
 import timm
@@ -26,7 +28,7 @@ import coperception.utils.maeutil.misc as misc
 # import wandb
 # from einops import rearrange
 import coperception.utils.maeutil.lr_sched as lr_sched
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 # ----------------------------
 
 def check_folder(folder_path):
@@ -60,15 +62,6 @@ def main(args):
 
     agent_idx_range = range(1, num_agent) if args.no_cross_road else range(num_agent)
 
-    # training_dataset = V2XSimDet(
-    #     dataset_roots=[f"{args.data}/agent{i}" for i in agent_idx_range],
-    #     config=config,
-    #     config_global=config_global,
-    #     split="train",
-    #     bound="both",
-    #     kd_flag=args.kd_flag,
-    #     no_cross_road=args.no_cross_road,
-    # )
     training_dataset = MultiTempV2XSimDet(
         dataset_roots=[f"{args.data}/agent{i}" for i in agent_idx_range],
         config=config,
@@ -210,6 +203,17 @@ def main(args):
 
         faf_module.model.train()
 
+        # t = tqdm(training_data_loader)
+        # for data_iter_step, sample in enumerate(t):
+        # test overfit
+        if args.wandb:
+            print("visualize using wandb")
+            import wandb
+            wandb.init(project="mae_bev_train", name="coperception-debug")
+            wandb.config.update(args)
+        # sample = next(iter(training_data_loader))
+        # t = tqdm(range(10000))
+        # for data_iter_step, ti in enumerate(t):
         t = tqdm(training_data_loader)
         for data_iter_step, sample in enumerate(t):
             (
@@ -264,13 +268,23 @@ def main(args):
                 data["bev_seq_next"] = torch.cat(tuple(padded_voxel_point_next_list), 0).to(device)
                 # adjust learning rate for mae
                 lr_sched.adjust_learning_rate(faf_module.optimizer, data_iter_step / len(training_data_loader) + epoch, args)
-                loss, _ = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=True)
+                loss, reconstruction = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=True)
             else:
                 loss, _ = faf_module.step_completion(data, batch_size, trainable=True)
             running_loss_disp.update(loss)
             curr_lr = faf_module.optimizer.param_groups[0]['lr']
             t.set_description("Epoch {},     lr {}".format(epoch, curr_lr))
             t.set_postfix(loss=running_loss_disp.avg)
+            
+            ## if visualize
+            if args.wandb and data_iter_step%200 ==0:
+                teacher_bev = torch.max(padded_voxel_points_teacher.squeeze(1).permute(0,3,1,2), dim=1, keepdim=True)[0]
+                pred_bev = torch.max(reconstruction, dim=1, keepdim=True)[0]
+                teacher_img = wandb.Image(plt.imshow(teacher_bev[0,:,:,:].detach().cpu().permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12))
+                pred_img = wandb.Image(plt.imshow(pred_bev[0,:,:,:].detach().cpu().permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12)) 
+                wandb.log({"overfit visualization": [teacher_img, pred_img]})
+                wandb.log({"runnning loss": running_loss_disp.avg})
+                
 
         if (args.com != "ind_mae" and args.com != "joint_mae"):
             faf_module.scheduler.step() ## avoid this affects mae training
@@ -373,6 +387,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--warmup_epochs", default=4, type=int, help="The number of warm up epochs"
     )
+    parser.add_argument("--min_lr", default=0., type=float, help="minimum learning rate")
     parser.add_argument(
         "--time_stamp", default=2, type=int, help="The total number of time stamp to use"
     )
@@ -387,6 +402,9 @@ if __name__ == "__main__":
         "--weight_decay", default=0.05, type=float, help="Used in MAE training"
     )
     ## ----------------------
+    parser.add_argument(
+        "--wandb", action="store_true", help="Whether use wandb to visualize"
+    )
 
     torch.multiprocessing.set_sharing_strategy("file_system")
     args = parser.parse_args()
