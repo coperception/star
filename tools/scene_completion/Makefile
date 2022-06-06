@@ -9,7 +9,7 @@ test_data := $(create_data_save_path)/test
 # com := mean
 batch_size := 1
 # Where to store the logs
-logpath := logs-amortized-ts1-complement=classification
+# logpath := logs-amortized-ts1-complement=classification
 # Train for how many epochs
 nepoch := 50
 # If given, the model will resume from its most recent (by modification time) check point
@@ -21,11 +21,13 @@ mask := complement
 mask_ratio := 0.75
 time_stamp := 1
 com := ind_mae
-mae_model := amortized_ind_patch8 #ind_bev_mae_vit_base_patch16
+patch_size := 8
+mae_model := amortized_ind_patch$(patch_size)
 lr := 1e-3
 min_lr := 0.
 mae_load_path := logs-amortized-ts1-complement=classification/ind_mae/with_cross/completion_epoch_14.pth
 test_batch := 1
+logpath := logs-amortized-ts$(time_stamp)-$(mask)-ratio$(mask_ratio)-ps$(patch_size)=classification
 
 
 train_completion:
