@@ -376,7 +376,7 @@ class FaFModule(object):
         trans_matrices = data['trans_matrices']
         
         with torch.cuda.amp.autocast(enabled=False):
-            loss, result, mask1, fused = self.model(bev_seq, 
+            loss, result, _, ind_pred = self.model(bev_seq, 
                                                     bev_seq_next, 
                                                     bev_teacher, 
                                                     trans_matrices, 
@@ -403,7 +403,7 @@ class FaFModule(object):
             # loss.backward()
             # self.optimizer.step()
 
-        return loss_value, result
+        return loss_value, result, ind_pred.detach()
 
     def get_kd_loss(self, batch_size, data, fused_layer, num_agent, x_5, x_6, x_7):
         if self.kd_flag:

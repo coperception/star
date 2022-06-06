@@ -130,7 +130,7 @@ def main(args):
     else:
         raise NotImplementedError("Invalid argument com:" + args.com)
 
-    model = nn.DataParallel(model)
+    # model = nn.DataParallel(model)
     model = model.to(device)
     # Juexiao added for mae
     if args.com == "ind_mae" or args.com == "joint_mae":
@@ -171,6 +171,9 @@ def main(args):
         faf_module.model.load_state_dict(checkpoint["model_state_dict"])
         faf_module.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         faf_module.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        faf_module.mae_loss_scaler.load_state_dict(checkpoint["mae_scaler_state_dict"])
+        # should zero the grad?
+        # faf_module.optimizer.zero_grad()
 
         print("Load model from {}, at epoch {}".format(args.resume, start_epoch - 1))
     else:
@@ -203,8 +206,6 @@ def main(args):
 
         faf_module.model.train()
 
-        # t = tqdm(training_data_loader)
-        # for data_iter_step, sample in enumerate(t):
         # test overfit
         if args.wandb:
             print("visualize using wandb")
@@ -212,7 +213,7 @@ def main(args):
             wandb.init(project="mae_bev_train", name="coperception-debug")
             wandb.config.update(args)
         # sample = next(iter(training_data_loader))
-        # t = tqdm(range(10000))
+        # t = tqdm(range(100))
         # for data_iter_step, ti in enumerate(t):
         t = tqdm(training_data_loader)
         for data_iter_step, sample in enumerate(t):
@@ -268,7 +269,7 @@ def main(args):
                 data["bev_seq_next"] = torch.cat(tuple(padded_voxel_point_next_list), 0).to(device)
                 # adjust learning rate for mae
                 lr_sched.adjust_learning_rate(faf_module.optimizer, data_iter_step / len(training_data_loader) + epoch, args)
-                loss, reconstruction = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=True)
+                loss, reconstruction, _ = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=True)
             else:
                 loss, _ = faf_module.step_completion(data, batch_size, trainable=True)
             running_loss_disp.update(loss)
@@ -314,6 +315,7 @@ def main(args):
                     "model_state_dict": faf_module.model.state_dict(),
                     "optimizer_state_dict": faf_module.optimizer.state_dict(),
                     "scheduler_state_dict": faf_module.scheduler.state_dict(),
+                    "mae_scaler_state_dict": faf_module.mae_loss_scaler.state_dict(),
                     "loss": running_loss_disp.avg,
                 }
             torch.save(

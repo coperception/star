@@ -10,6 +10,47 @@ from timm.models.vision_transformer import PatchEmbed, Block
 
 from coperception.utils.maeutil.pos_embed import get_2d_sincos_pos_embed
 
+class SegmentationHead(nn.Module):
+  '''
+  3D Segmentation heads to retrieve semantic segmentation at each scale.
+  Formed by Dim expansion, Conv3D, ASPP block, Conv3D.
+  '''
+  def __init__(self, inplanes, planes, nbr_classes, dilations_conv_list):
+    super().__init__()
+
+    # First convolution
+    self.conv0 = nn.Conv3d(inplanes, planes, kernel_size=3, padding=1, stride=1)
+
+    # ASPP Block
+    self.conv_list = dilations_conv_list
+    self.conv1 = nn.ModuleList(
+      [nn.Conv3d(planes, planes, kernel_size=3, padding=dil, dilation=dil, bias=False) for dil in dilations_conv_list])
+    self.bn1 = nn.ModuleList([nn.BatchNorm3d(planes) for dil in dilations_conv_list])
+    self.conv2 = nn.ModuleList(
+      [nn.Conv3d(planes, planes, kernel_size=3, padding=dil, dilation=dil, bias=False) for dil in dilations_conv_list])
+    self.bn2 = nn.ModuleList([nn.BatchNorm3d(planes) for dil in dilations_conv_list])
+    self.relu = nn.ReLU(inplace=True)
+
+    # Convolution for output
+    self.conv_classes = nn.Conv3d(planes, nbr_classes, kernel_size=3, padding=1, stride=1)
+
+  def forward(self, x_in):
+
+    # Dimension exapension
+    x_in = x_in[:, None, :, :, :]
+
+    # Convolution to go from inplanes to planes features...
+    x_in = self.relu(self.conv0(x_in))
+
+    y = self.bn2[0](self.conv2[0](self.relu(self.bn1[0](self.conv1[0](x_in)))))
+    for i in range(1, len(self.conv_list)):
+      y += self.bn2[i](self.conv2[i](self.relu(self.bn1[i](self.conv1[i](x_in)))))
+    x_in = self.relu(y + x_in)  # modified
+
+    x_in = self.conv_classes(x_in)
+
+    return x_in
+
 class ConvPred(nn.Module):
     """
     a upsampling and deconve module in repalce of the original final linear projection,
@@ -30,6 +71,8 @@ class ConvPred(nn.Module):
         self.conv3 = nn.Conv2d(chans2, output_chans, kernel_size=3, stride=1, padding=1)
         self.bn3 = nn.BatchNorm2d(output_chans)
 
+        self.cls_head = SegmentationHead(inplanes=1, planes=8, nbr_classes=2, dilations_conv_list=[1, 2, 3])
+
     def forward(self, x):
         # ---- patch size 8x8 --- will have 32x32x512 ----
         # upsampling 32x32x512 -> 64x64x512
@@ -43,8 +86,9 @@ class ConvPred(nn.Module):
         # upsamping 128x128x128 -> 256x256x128
         x = F.interpolate(x, scale_factor=2, mode='bilinear') #, align_corners=True)
         # channel compression 128 -> 13
-        # x = self.bn3(self.conv3(x))
-        x = torch.sigmoid(self.bn3(self.conv3(x)))
+        x = self.bn3(self.conv3(x))
+        # x = torch.sigmoid(self.bn3(self.conv3(x)))
+        x = self.cls_head(x) #[B, 2, C, H, W]
         return x
 
 # class ConvPred(nn.Module):
@@ -147,10 +191,8 @@ class MultiAgentMaskedAutoencoderViT(nn.Module):
 
         if decoder_head == "mlp":
             # self.decoder_pred = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True) # decoder to patch
-            self.decoder_pred = nn.Sequential(
-                nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True),
-                nn.Sigmoid()
-            )
+            self.decoder_pred_occ = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True)
+            self.decoder_pred_free = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True)
         # conv decoder pred
         elif decoder_head == "conv3":
             self.decoder_pred = ConvPred(input_size=32, output_size=256, input_chans=512, output_chans=13)
@@ -450,11 +492,13 @@ class MultiAgentMaskedAutoencoderViT(nn.Module):
                 warp_feat = self.feature_transformation(b, j, local_com_mat, all_warp, device, size)
                 self.neighbor_feat_list.append(warp_feat)
         
-    def fusion(self):
+    def fusion(self, mode="sum"):
         # add all the features point wise
         # print("len of nb feat list", len(self.neighbor_feat_list))
-        return torch.sum(torch.stack(self.neighbor_feat_list), dim=0) # stack is cat along a new dim, so [5, c, h, w] then sum
-        # return self.neighbor_feat_list[0] #NOTE: debug, no communication
+        fused = torch.sum(torch.stack(self.neighbor_feat_list), dim=0)
+        if mode == "union":
+            fused[fused>0.] = 1.0 
+        return fused 
 
     # Question: this can be done by a view or reshape?
     # shaped like: [ (batch_agent1, batch_agent2, ...)  , channel, h, w]
