@@ -1,5 +1,5 @@
 # Where to save the created data
-# create_data_save_path := /scratch/dm4524/data/V2X-Sim-det
+#create_data_save_path := /scratch/dm4524/data/V2X-Sim-det
 create_data_save_path := /mnt/NAS/data/dekun/V2X-Sim-det
 
 # Path to the created training data
@@ -28,10 +28,14 @@ min_lr := 0.
 mae_load_path := logs-amortized-ts1-complement=classification/ind_mae/with_cross/completion_epoch_14.pth
 test_batch := 1
 logpath := logs-amortized-ts$(time_stamp)-$(mask)-ratio$(mask_ratio)-ps$(patch_size)=classification
-
+# If given, the model will resume from its most recent (by modification time) check point
+auto_resume_path := $(logpath)
 
 train_completion:
-	python train_completion.py --data $(training_data) --com $(com) --log --batch $(batch_size) --nepoch $(nepoch) --logpath $(logpath) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) --lr $(lr) --no_cross_road
+	python train_completion.py --data $(training_data) --com $(com) --log --batch $(batch_size) --nepoch $(nepoch) --logpath $(logpath) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) --lr $(lr) --no_cross_road  --auto_resume_path $(auto_resume_path)
+
+train_completion_with_cross:
+	python train_completion.py --data $(training_data) --com $(com) --log --batch $(batch_size) --nepoch $(nepoch) --logpath $(logpath) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) --lr $(lr) --auto_resume_path $(auto_resume_path)
 
 train_det:
 	python train_codet.py --data $(training_data) --com $(com) --log --batch $(batch_size) --auto_resume_path $(auto_resume_path) --nepoch $(nepoch) --logpath $(logpath) --resume_completion $(logpath)/$(com)/with_cross/completion_epoch_1.pth --fine_tune $(fine_tune)

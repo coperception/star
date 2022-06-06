@@ -1,5 +1,6 @@
 import argparse
 import os
+import glob
 
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -47,6 +48,8 @@ def main(args):
     start_epoch = 1
     batch_size = args.batch
     num_agent = args.num_agent
+    auto_resume_path = args.auto_resume_path
+
 
     # Specify gpu device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -153,8 +156,30 @@ def main(args):
     else:
         model_save_path = check_folder(os.path.join(model_save_path, "with_cross"))
 
-    if args.resume:
-        model_save_path = args.resume[: args.resume.rfind("/")]
+    # auto_resume
+    # check if there is valid check point file
+    cross_path = "no_cross" if args.no_cross_road else "with_cross"
+    if auto_resume_path:
+        has_valid_pth = False
+        for pth_file in os.listdir(os.path.join(auto_resume_path, f"{flag}/{cross_path}")):
+            if pth_file.startswith("completion_epoch_") and pth_file.endswith(".pth"):
+                has_valid_pth = True
+                break
+
+        if not has_valid_pth:
+            print(
+                f"No valid check point file in {auto_resume_path} dir, weights not loaded."
+            )
+            auto_resume_path = ""
+
+    if auto_resume_path or args.resume:
+        if auto_resume_path:
+            list_of_files = glob.glob(f"{model_save_path}/*.pth")
+            latest_pth = max(list_of_files, key=os.path.getctime)
+            checkpoint = torch.load(latest_pth)
+        else:
+            model_save_path = args.resume[: args.resume.rfind("/")]
+            checkpoint = torch.load(args.resume)
 
         log_file_name = os.path.join(model_save_path, "log_completion.txt")
         saver = open(log_file_name, "a")
@@ -166,7 +191,6 @@ def main(args):
         saver.write(args.__repr__() + "\n\n")
         saver.flush()
 
-        checkpoint = torch.load(args.resume)
         start_epoch = checkpoint["epoch"] + 1
         faf_module.model.load_state_dict(checkpoint["model_state_dict"])
         faf_module.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -175,7 +199,8 @@ def main(args):
         # should zero the grad?
         # faf_module.optimizer.zero_grad()
 
-        print("Load model from {}, at epoch {}".format(args.resume, start_epoch - 1))
+        print("Load model from {}, at epoch {}".format(auto_resume_path or args.resume, start_epoch - 1))
+
     else:
         if need_log:
             log_file_name = os.path.join(model_save_path, "log_completion.txt")
@@ -186,8 +211,9 @@ def main(args):
             # Logging the details for this experiment
             saver.write("command line: {}\n".format(" ".join(sys.argv[0:])))
             saver.write(args.__repr__() + "\n\n")
-            saver.flush()
+            saver.flush() 
 
+    
     for epoch in range(start_epoch, num_epochs + 1):
         lr = faf_module.optimizer.param_groups[0]["lr"]
         print("Epoch {}, learning rate {}".format(epoch, lr))
@@ -406,6 +432,13 @@ if __name__ == "__main__":
     ## ----------------------
     parser.add_argument(
         "--wandb", action="store_true", help="Whether use wandb to visualize"
+    )
+    # auto_resume
+    parser.add_argument(
+        "--auto_resume_path",
+        default="",
+        type=str,
+        help="The path to automatically reload the latest pth",
     )
 
     torch.multiprocessing.set_sharing_strategy("file_system")
