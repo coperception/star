@@ -1,4 +1,5 @@
 import argparse
+from multiprocessing.connection import deliver_challenge
 import os
 import glob
 
@@ -176,10 +177,10 @@ def main(args):
         if auto_resume_path:
             list_of_files = glob.glob(f"{model_save_path}/*.pth")
             latest_pth = max(list_of_files, key=os.path.getctime)
-            checkpoint = torch.load(latest_pth)
+            checkpoint = torch.load(latest_pth, map_location='cpu')
         else:
             model_save_path = args.resume[: args.resume.rfind("/")]
-            checkpoint = torch.load(args.resume)
+            checkpoint = torch.load(args.resume, map_location='cpu')
 
         log_file_name = os.path.join(model_save_path, "log_completion.txt")
         saver = open(log_file_name, "a")
@@ -192,12 +193,12 @@ def main(args):
         saver.flush()
 
         start_epoch = checkpoint["epoch"] + 1
-        faf_module.model.load_state_dict(checkpoint["model_state_dict"])
-        faf_module.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        faf_module.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-        faf_module.mae_loss_scaler.load_state_dict(checkpoint["mae_scaler_state_dict"])
+        # faf_module.model.load_state_dict(checkpoint["model_state_dict"])
+        # faf_module.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        # faf_module.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        # faf_module.mae_loss_scaler.load_state_dict(checkpoint["mae_scaler_state_dict"])
         # should zero the grad?
-        # faf_module.optimizer.zero_grad()
+        faf_module.resume_from_cpu(checkpoint=checkpoint, device=device)
 
         print("Load model from {}, at epoch {}".format(auto_resume_path or args.resume, start_epoch - 1))
 

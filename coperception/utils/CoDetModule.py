@@ -8,6 +8,7 @@ import torch.nn.functional as F
 # Juexiao add for mae -----
 from coperception.utils.maeutil.misc import NativeScalerWithGradNormCount as NativeScaler
 import math
+from coperception.utils.move_optim import optimizer_to
 # -------------------------
 
 
@@ -84,6 +85,25 @@ class FaFModule(object):
                 print("caution: missing keys from checkpoint {}: {}".format(path, k))
         else:
             print("=> no checkpoint found at '{}'".format(path))
+
+    def resume_from_cpu(self, checkpoint, device):
+        """
+        This function load state dict to model and optimizer on cpu, and move it back to device.
+        This avoids a GPU memory surge issue.
+        NOTE: assume checkpoint is loaded in cpu
+        """
+        # handles model
+        self.model = self.model.cpu()
+        self.model.load_state_dict(checkpoint["model_state_dict"])
+        self.model = self.model.to(device)
+        # handles optimizer
+        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        optimizer_to(self.optimizer, device)
+        # possible extension: reinitialize scheduler based on this new optimizer
+        self.scheduler = self.scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                self.optimizer, milestones=[50, 100, 150, 200], gamma=0.5
+        )
+
 
     # TODO: to be defined in "loss_calculator"
     def corner_loss(self, anchors, reg_loss_mask, reg_targets, pred_result):
