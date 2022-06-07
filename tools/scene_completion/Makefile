@@ -11,7 +11,7 @@ batch_size := 1
 # Where to store the logs
 # logpath := logs-amortized-ts1-complement=classification
 # Train for how many epochs
-nepoch := 20
+nepoch := 50
 # If given, the model will resume from its most recent (by modification time) check point
 auto_resume_path := $(logpath)
 fine_tune := 1
@@ -19,10 +19,11 @@ fine_tune := 1
 # args for mae
 mask := complement
 mask_ratio := 0.75
-time_stamp := 3
-com := joint_mae
+time_stamp := 1
+recon := ind
+com := $(recon)_mae
 patch_size := 8
-mae_model := amortized_joint_patch$(patch_size)
+mae_model := amortized_$(recon)_patch$(patch_size)
 lr := 1e-3
 min_lr := 0.
 mae_load_path := logs-amortized-ts1-complement=classification/ind_mae/with_cross/completion_epoch_14.pth

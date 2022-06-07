@@ -1032,6 +1032,12 @@ def amo_fusion_bev_multi_mae_vit_base_patch8_dec512d8b(**kwargs):
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="conv3", **kwargs)
     return model
 # NOTE: depth changed.
+def amo_fusion_bev_multi_mae_vit_base_patch16_dec512d8b(**kwargs):
+    model = AmortizedFusionMMAEViT(
+        img_size=256, patch_size=16, in_chans=13, embed_dim=768, depth=6, num_heads=12,
+        decoder_embed_dim=512, decoder_depth=6, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="conv3", **kwargs)
+    return model
 
     
 def individual_bev_multi_mae_vit_base_patch8_dec512d8b(**kwargs):
@@ -1100,3 +1106,4 @@ amortized_ind_patch8_shallow = amo_individual_bev_multi_mae_vit_base_patch8_dec5
 amortized_ind_patch16 = amo_individual_bev_multi_mae_vit_base_patch16_dec512d8b
 amortized_ind_patch4 = amo_individual_bev_multi_mae_vit_base_patch4_dec512d8b
 amortized_joint_patch8 = amo_fusion_bev_multi_mae_vit_base_patch8_dec512d8b
+amortized_joint_patch16 = amo_fusion_bev_multi_mae_vit_base_patch16_dec512d8b
