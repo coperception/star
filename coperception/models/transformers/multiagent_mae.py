@@ -630,13 +630,16 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         x = x.reshape(x.shape[0], self.patch_h, self.patch_w, x.shape[-1]) # (B, h, w, chns)
         x = x.permute(0, 3, 1, 2).contiguous() # (B, chns, h, w)
         # print("before pred size", x.size())
-        x = self.decoder_pred(x)
-        # print("after pred size", x.size())
-        # patchify back to accomodate
-        # x = self.patchify(x)
-        # print("pred size", x.size())
+        # x = self.decoder_pred(x)
         # --------------------
-        return x
+        # two head classification
+        x_occ = self.decoder_pred_occ(x) 
+        # print("occ, ", x_occ.size())
+        x_free = self.decoder_pred_free(x)
+        # print("free,", x_free.size())
+        x_pred = torch.stack((x_free, x_occ), dim=1)
+        # print(x_pred.size())
+        return x_pred
 
     def forward_loss(self, teacher, pred):
         """
@@ -993,6 +996,14 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
 
 
 
+def amo_individual_bev_multi_mae_vit_base_patch8_dec512d6b(**kwargs):
+    model = AmortizedIndivMMAEViT(
+        img_size=256, patch_size=8, in_chans=13, embed_dim=768, depth=6, num_heads=12,
+        decoder_embed_dim=512, decoder_depth=6, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="mlp", **kwargs)
+    return model
+
+
 def amo_individual_bev_multi_mae_vit_base_patch8_dec512d8b(**kwargs):
     model = AmortizedIndivMMAEViT(
         img_size=256, patch_size=8, in_chans=13, embed_dim=768, depth=12, num_heads=12,
@@ -1085,6 +1096,7 @@ joint_bev_mae_vit_base_patch16_dec1024 = fusion_bev_multi_mae_vit_base_patch16_d
 ind_bev_mae_vit_base_patch8 = individual_bev_multi_mae_vit_base_patch8_dec512d8b
 # temporal amortized reconstruction
 amortized_ind_patch8 = amo_individual_bev_multi_mae_vit_base_patch8_dec512d8b
+amortized_ind_patch8_shallow = amo_individual_bev_multi_mae_vit_base_patch8_dec512d6b
 amortized_ind_patch16 = amo_individual_bev_multi_mae_vit_base_patch16_dec512d8b
 amortized_ind_patch4 = amo_individual_bev_multi_mae_vit_base_patch4_dec512d8b
 amortized_joint_patch8 = amo_fusion_bev_multi_mae_vit_base_patch8_dec512d8b

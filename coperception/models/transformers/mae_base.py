@@ -71,7 +71,7 @@ class ConvPred(nn.Module):
         self.conv3 = nn.Conv2d(chans2, output_chans, kernel_size=3, stride=1, padding=1)
         self.bn3 = nn.BatchNorm2d(output_chans)
 
-        self.cls_head = SegmentationHead(inplanes=1, planes=8, nbr_classes=2, dilations_conv_list=[1, 2, 3])
+        # self.cls_head = SegmentationHead(inplanes=1, planes=8, nbr_classes=2, dilations_conv_list=[1, 2, 3])
 
     def forward(self, x):
         # ---- patch size 8x8 --- will have 32x32x512 ----
@@ -88,7 +88,7 @@ class ConvPred(nn.Module):
         # channel compression 128 -> 13
         x = self.bn3(self.conv3(x))
         # x = torch.sigmoid(self.bn3(self.conv3(x)))
-        x = self.cls_head(x) #[B, 2, C, H, W]
+        # x = self.cls_head(x) #[B, 2, C, H, W]
         return x
 
 # class ConvPred(nn.Module):
@@ -195,7 +195,8 @@ class MultiAgentMaskedAutoencoderViT(nn.Module):
             self.decoder_pred_free = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True)
         # conv decoder pred
         elif decoder_head == "conv3":
-            self.decoder_pred = ConvPred(input_size=32, output_size=256, input_chans=512, output_chans=13)
+            self.decoder_pred_occ = ConvPred(input_size=32, output_size=256, input_chans=512, output_chans=13)
+            self.decoder_pred_free = ConvPred(input_size=32, output_size=256, input_chans=512, output_chans=13)
         else:
             raise NotImplementedError("decoder head", decoder_head)
         # --------------------------------------------------------------------------
@@ -399,7 +400,7 @@ class MultiAgentMaskedAutoencoderViT(nn.Module):
             # masks.append(mask2)
         elif xnum == 3:
             len_keep2 = int(L * (1 - mask_ratio))
-            len_keep2 = L - len_keep1 - len_keep2
+            len_keep3 = L - len_keep1 - len_keep2
             ids_keep2 = ids_shuffle[:, len_keep1: len_keep1+len_keep2]
             ids_keep3 = ids_shuffle[:, len_keep1+len_keep2 :]
             assert ids_keep2.size(1) == len_keep2
@@ -614,5 +615,5 @@ class MultiAgentMaskedAutoencoderViT(nn.Module):
         latent_to_decode = latent[:, :1+size1, :]
         pred = self.forward_decoder(latent_to_decode, ids_restore)  # [N, L, p*p*3]
         loss = self.forward_loss(imgs1, pred, mask1)
-        # result = self.unpatchify(pred)
-        return loss, pred, mask1, mask2
+        result = self.unpatchify(pred)
+        return loss, pred, mask1, result

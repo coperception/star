@@ -621,7 +621,7 @@ class MultiTempV2XSimDet(V2XSimDet):
             end_frame_idx = self.time_stamp - 1 + idx
             current_scene = self.seq_scenes[agent_id][idx]
             for nextframe_idx in range(idx+1, end_frame_idx+1):
-                if (nextframe_idx) > (len(self.seq_scenes[agent_id])-1) or self.seq_scenes[agent_id][nextframe_idx] != current_scene:
+                while ((nextframe_idx) > (len(self.seq_scenes[agent_id])-1) or self.seq_scenes[agent_id][nextframe_idx] != current_scene):
                     # padded_voxel_points_next = padded_voxel_points
                     nextframe_idx = nextframe_idx - 1 # still use last frame as the next frame
                 # padded_voxel_points_next = list()
