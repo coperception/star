@@ -69,6 +69,7 @@ class ConvPred(nn.Module):
         self.bn2 = nn.BatchNorm2d(chans2)
         # 256x256x128 -> 2256x256x13
         self.conv3 = nn.Conv2d(chans2, output_chans, kernel_size=3, stride=1, padding=1)
+        # self.conv3 = nn.Conv2d(chans2, output_chans, kernel_size=1, stride=1, padding=0)
         self.bn3 = nn.BatchNorm2d(output_chans)
 
         # self.cls_head = SegmentationHead(inplanes=1, planes=8, nbr_classes=2, dilations_conv_list=[1, 2, 3])
@@ -91,55 +92,55 @@ class ConvPred(nn.Module):
         # x = self.cls_head(x) #[B, 2, C, H, W]
         return x
 
-# class ConvPred(nn.Module):
-#     """
-#     a upsampling and deconve module in repalce of the original final linear projection,
-#     to obtain the prediction of the original image.
-#     for patch size 16x16, feature map size 16x16x512
-#     """
-#     def __init__(self, input_size=16, output_size=256, input_chans=512, output_chans=13):
-#         super().__init__()
-#         # 32x32x512 -> 32x32x256
-#         chans1 = input_chans//2
-#         self.conv1 = nn.Conv2d(input_chans, chans1, kernel_size=3, stride=1, padding=1)
-#         self.bn1 = nn.BatchNorm2d(chans1)
-#         # 64x64x256 -> 64x64x128
-#         chans2 = chans1//2
-#         self.conv2 = nn.Conv2d(chans1, chans2, kernel_size=3, stride=1, padding=1)
-#         self.bn2 = nn.BatchNorm2d(chans2)
-#         # 128x128x128 -> 128x128x64
-#         chans3 = chans2//2
-#         self.conv3 = nn.Conv2d(chans2, chans3, kernel_size=3, stride=1, padding=1)
-#         self.bn3 = nn.BatchNorm2d(chans3)
-#         # 256x256x64 -> 256x256x13
-#         self.conv4 = nn.Conv2d(chans3, output_chans, kernel_size=3, stride=1, padding=1)
-#         self.bn4 = nn.BatchNorm2d(output_chans)
+class ConvPred16(nn.Module):
+    """
+    a upsampling and deconve module in repalce of the original final linear projection,
+    to obtain the prediction of the original image.
+    for patch size 16x16, feature map size 16x16x512
+    """
+    def __init__(self, input_size=16, output_size=256, input_chans=512, output_chans=13):
+        super().__init__()
+        # 32x32x512 -> 32x32x256
+        chans1 = input_chans//2
+        self.conv1 = nn.Conv2d(input_chans, chans1, kernel_size=3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(chans1)
+        # 64x64x256 -> 64x64x128
+        chans2 = chans1//2
+        self.conv2 = nn.Conv2d(chans1, chans2, kernel_size=3, stride=1, padding=1)
+        self.bn2 = nn.BatchNorm2d(chans2)
+        # 128x128x128 -> 128x128x64
+        chans3 = chans2//2
+        self.conv3 = nn.Conv2d(chans2, chans3, kernel_size=3, stride=1, padding=1)
+        self.bn3 = nn.BatchNorm2d(chans3)
+        # 256x256x64 -> 256x256x13
+        self.conv4 = nn.Conv2d(chans3, output_chans, kernel_size=3, stride=1, padding=1)
+        self.bn4 = nn.BatchNorm2d(output_chans)
 
-#     def forward(self, x):
-#         # ---- 16x16x512 ------
-#         # upsampling 16x16x512 -> 32x32x512
-#         x = F.interpolate(x, scale_factor=2, mode='bilinear') #, align_corners=True)
-#         # print("up 1", x.size())
-#         # channel compression 512 -> 256
-#         x = F.relu(self.bn1(self.conv1(x)))
-#         # upsamping 32x32x256 -> 64x64x256
-#         x = F.interpolate(x, scale_factor=2, mode='bilinear') #, align_corners=True)
-#         # print("up 2", x.size())
-#         # channel compression 256->128
-#         x = F.relu(self.bn2(self.conv2(x)))
-#         # upsamping 64x64x128 -> 128x128x128
-#         x = F.interpolate(x, scale_factor=2, mode='bilinear') #, align_corners=True)
-#         # print("up 3", x.size())
-#         # channel compression 128->64
-#         x = F.relu(self.bn3(self.conv3(x)))
-#         # upsamping 128x128x64 -> 256x256x64
-#         x = F.interpolate(x, scale_factor=2, mode='bilinear') #, align_corners=True)
-#         # print("up 4", x.size())
-#         # channel compression 64->13
-#         # x = F.relu(self.bn4(self.conv4(x)))
-#         x = self.bn4(self.conv4(x))
-#         # ----------------------------
-#         return x
+    def forward(self, x):
+        # ---- 16x16x512 ------
+        # upsampling 16x16x512 -> 32x32x512
+        x = F.interpolate(x, scale_factor=2, mode='bilinear') #, align_corners=True)
+        # print("up 1", x.size())
+        # channel compression 512 -> 256
+        x = F.relu(self.bn1(self.conv1(x)))
+        # upsamping 32x32x256 -> 64x64x256
+        x = F.interpolate(x, scale_factor=2, mode='bilinear') #, align_corners=True)
+        # print("up 2", x.size())
+        # channel compression 256->128
+        x = F.relu(self.bn2(self.conv2(x)))
+        # upsamping 64x64x128 -> 128x128x128
+        x = F.interpolate(x, scale_factor=2, mode='bilinear') #, align_corners=True)
+        # print("up 3", x.size())
+        # channel compression 128->64
+        x = F.relu(self.bn3(self.conv3(x)))
+        # upsamping 128x128x64 -> 256x256x64
+        x = F.interpolate(x, scale_factor=2, mode='bilinear') #, align_corners=True)
+        # print("up 4", x.size())
+        # channel compression 64->13
+        # x = F.relu(self.bn4(self.conv4(x)))
+        x = self.bn4(self.conv4(x))
+        # ----------------------------
+        return x
 
 class MultiAgentMaskedAutoencoderViT(nn.Module):
     """ Masked Autoencoder with VisionTransformer backbone
@@ -195,8 +196,14 @@ class MultiAgentMaskedAutoencoderViT(nn.Module):
             self.decoder_pred_free = nn.Linear(decoder_embed_dim, patch_size**2 * in_chans, bias=True)
         # conv decoder pred
         elif decoder_head == "conv3":
-            self.decoder_pred_occ = ConvPred(input_size=32, output_size=256, input_chans=512, output_chans=13)
-            self.decoder_pred_free = ConvPred(input_size=32, output_size=256, input_chans=512, output_chans=13)
+            if patch_size == 8:
+                self.decoder_pred_occ = ConvPred(input_size=32, output_size=256, input_chans=512, output_chans=13)
+                self.decoder_pred_free = ConvPred(input_size=32, output_size=256, input_chans=512, output_chans=13)
+            elif patch_size == 16:
+                self.decoder_pred_occ = ConvPred16(input_size=16, output_size=256, input_chans=512, output_chans=13)
+                self.decoder_pred_free = ConvPred16(input_size=16, output_size=256, input_chans=512, output_chans=13)
+            else:
+                raise NotImplementedError("not supported conv head for patch size", patch_size)
         else:
             raise NotImplementedError("decoder head", decoder_head)
         # --------------------------------------------------------------------------

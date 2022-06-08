@@ -688,7 +688,7 @@ class AmortizedFusionMMAEViT(MultiAgentMaskedAutoencoderViT):
         loss = self.forward_bce_loss(teacher, pred)
         # result = self.unpatchify(pred)
         result = torch.argmax(torch.softmax(pred, dim=1), dim=1)
-        return loss, result, mask, fused_latent
+        return loss, result, mask, pred
 
 
 class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
@@ -877,6 +877,45 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         # print('feat fuse mat size', feat_fuse_mat.size())
         return fused_images
 
+    def ego_late_fusion(self, pred, gt, trans_matrices, num_agent_tensor, batch_size):
+        """ aggregation, ego use ground truth input, used specifically in inference time"""
+        device = pred.device
+        # indiv_imgs = self.unpatchify(pred) # [B C H W]
+        indiv_imgs = pred.type(torch.FloatTensor).to(device)
+        ## --- do fusion ---
+        size = self.get_feature_maps_size(indiv_imgs)
+        # print(size)
+        assert indiv_imgs.size(0) % batch_size == 0, (indiv_imgs.size(), batch_size)
+        self.num_agent = indiv_imgs.size(0) // batch_size
+        feat_list = self.build_feature_list(batch_size, indiv_imgs)
+        gt_list = self.build_feature_list(batch_size, gt)
+        # print(feat_list)
+        local_com_mat = self.build_local_communication_matrix(feat_list)  # [2 5 13 256 256] [batch, agent, channel, height, width]
+        local_com_mat_update = self.build_local_communication_matrix(feat_list)  # to avoid the inplace operation
+        local_com_mat_gt = self.build_local_communication_matrix(gt_list)
+
+        for b in range(batch_size):
+            num_agent = num_agent_tensor[b, 0]
+            for i in range(num_agent):
+                # use gt for the ego
+                self.tg_agent = local_com_mat_gt[b, i]
+                # print("tg agent shape", self.tg_agent.shape) #[13,256,256] 
+                self.neighbor_feat_list = []
+                self.neighbor_feat_list.append(self.tg_agent)
+                all_warp = trans_matrices[b, i]  # transformation [2 5 5 4 4]
+                # print(all_warp.shape)[5,4,4]
+                self.build_neighbors_feature_list(b, i, all_warp, num_agent, local_com_mat,
+                                                    device, size)
+
+                # feature update
+                # torch.save(torch.stack(self.neighbor_feat_list).detach().cpu(), "/mnt/NAS/home/zjx/Masked-Multiagent-Autoencoder/debug/nbf-{}-{}.pt".format(b, i))
+                local_com_mat_update[b, i] = self.fusion(mode="union") 
+        
+        # weighted feature maps is passed to decoder
+        fused_images = self.agents_to_batch(local_com_mat_update)
+        # print('feat fuse mat size', feat_fuse_mat.size())
+        return fused_images
+
     def forward_encoder(self, x1, x_next, mask_ratio):
         """
         x1: [bxa, C, H, W]
@@ -994,6 +1033,27 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         # ind_result = self.unpatchify(pred)
         return loss, result, mask, ind_result
 
+    def inference(self, imgs1, imgs_next, teacher, trans_matrices, num_agent_tensor, batch_size, mask_ratio=0.75):
+        """
+        Encoder encodes each timestamp alone
+        Decoder fuses multi timestamp together
+        """
+        p = self.patch_embed.patch_size[0]
+        self.patch_h = self.patch_w = imgs1.shape[2]//p
+        # print("image, patch h, w", imgs1.shape, self.patch_h, self.patch_w)
+        latent, mask, ids_restore = self.forward_encoder(imgs1, imgs_next, mask_ratio)
+        # latent: [BAT, L, D]
+        pred = self.forward_decoder(latent, mask, ids_restore)
+        # loss = self.forward_loss(imgs1, pred)
+        loss = self.forward_bce_loss(imgs1, pred)
+        # print(imgs1.size(), imgs1.type())
+        ind_result = torch.argmax(torch.softmax(pred, dim=1), dim=1)
+        result = self.ego_late_fusion(ind_result, imgs1, trans_matrices, num_agent_tensor, batch_size)
+        # result = self.ego_late_fusion(imgs1, imgs1, trans_matrices, num_agent_tensor, batch_size)
+        # print(result.size())
+        # ind_result = self.unpatchify(pred)
+        return loss, result, mask, ind_result
+
 
 
 def amo_individual_bev_multi_mae_vit_base_patch8_dec512d6b(**kwargs):
@@ -1025,17 +1085,31 @@ def amo_individual_bev_multi_mae_vit_base_patch4_dec512d8b(**kwargs):
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="mlp", **kwargs)
     return model
 
-def amo_fusion_bev_multi_mae_vit_base_patch8_dec512d8b(**kwargs):
+def amo_fusion_bev_multi_mae_vit_base_patch8_dec512d6b(**kwargs):
     model = AmortizedFusionMMAEViT(
         img_size=256, patch_size=8, in_chans=13, embed_dim=768, depth=6, num_heads=12,
         decoder_embed_dim=512, decoder_depth=6, decoder_num_heads=16,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="conv3", **kwargs)
     return model
 # NOTE: depth changed.
-def amo_fusion_bev_multi_mae_vit_base_patch16_dec512d8b(**kwargs):
+def amo_fusion_bev_multi_mae_vit_base_patch16_dec512d6b(**kwargs):
     model = AmortizedFusionMMAEViT(
         img_size=256, patch_size=16, in_chans=13, embed_dim=768, depth=6, num_heads=12,
         decoder_embed_dim=512, decoder_depth=6, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="conv3", **kwargs)
+    return model
+
+def amo_fusion_bev_multi_mae_vit_base_patch8_dec512d8b(**kwargs):
+    model = AmortizedFusionMMAEViT(
+        img_size=256, patch_size=8, in_chans=13, embed_dim=768, depth=12, num_heads=12,
+        decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="conv3", **kwargs)
+    return model
+
+def amo_fusion_bev_multi_mae_vit_base_patch16_dec512d8b(**kwargs):
+    model = AmortizedFusionMMAEViT(
+        img_size=256, patch_size=16, in_chans=13, embed_dim=768, depth=12, num_heads=12,
+        decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="conv3", **kwargs)
     return model
 
@@ -1105,5 +1179,7 @@ amortized_ind_patch8 = amo_individual_bev_multi_mae_vit_base_patch8_dec512d8b
 amortized_ind_patch8_shallow = amo_individual_bev_multi_mae_vit_base_patch8_dec512d6b
 amortized_ind_patch16 = amo_individual_bev_multi_mae_vit_base_patch16_dec512d8b
 amortized_ind_patch4 = amo_individual_bev_multi_mae_vit_base_patch4_dec512d8b
+amortized_joint_patch8_shallow = amo_fusion_bev_multi_mae_vit_base_patch8_dec512d6b
+amortized_joint_patch16_shallow = amo_fusion_bev_multi_mae_vit_base_patch16_dec512d6b
 amortized_joint_patch8 = amo_fusion_bev_multi_mae_vit_base_patch8_dec512d8b
-amortized_joint_patch16 = amo_fusion_bev_multi_mae_vit_base_patch16_dec512d8b
+amortized_joint_patch16 = amo_fusion_bev_multi_mae_vit_base_patch8_dec512d8b

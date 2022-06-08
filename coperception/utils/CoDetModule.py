@@ -86,7 +86,7 @@ class FaFModule(object):
         else:
             print("=> no checkpoint found at '{}'".format(path))
 
-    def resume_from_cpu(self, checkpoint, device):
+    def resume_from_cpu(self, checkpoint, device, trainable=True):
         """
         This function load state dict to model and optimizer on cpu, and move it back to device.
         This avoids a GPU memory surge issue.
@@ -96,13 +96,14 @@ class FaFModule(object):
         self.model = self.model.cpu()
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.model = self.model.to(device)
-        # handles optimizer
-        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        optimizer_to(self.optimizer, device)
-        # possible extension: reinitialize scheduler based on this new optimizer
-        self.scheduler = self.scheduler = torch.optim.lr_scheduler.MultiStepLR(
-                self.optimizer, milestones=[50, 100, 150, 200], gamma=0.5
-        )
+        if trainable:
+            # handles optimizer
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            optimizer_to(self.optimizer, device)
+            # possible extension: reinitialize scheduler based on this new optimizer
+            self.scheduler = self.scheduler = torch.optim.lr_scheduler.MultiStepLR(
+                    self.optimizer, milestones=[50, 100, 150, 200], gamma=0.5
+            )
 
 
     # TODO: to be defined in "loss_calculator"
@@ -423,6 +424,31 @@ class FaFModule(object):
             # loss.backward()
             # self.optimizer.step()
 
+        return loss_value, result, ind_pred.detach()
+
+    # inference mae, ego use groundtruth
+    def infer_mae_completion(self, data, batch_size, mask_ratio, loss_fn='mse'):
+        # figure out the dimensions: squeeze, permute etc
+        bev_seq = data['bev_seq'].squeeze(1).permute(0,3,1,2)
+        bev_seq_next = data['bev_seq_next'] # [bxa, ts-1, H, W, C]
+        if bev_seq_next.dim()>2:
+            bev_seq_next = bev_seq_next.permute(0,1,4,2,3) # [bxa, ts-1, C, H, W]
+        # print(data['bev_seq_teacher'].size())
+        bev_teacher = data['bev_seq_teacher'].squeeze(1).permute(0,3,1,2)
+        # print("teacher size", bev_teacher.size())
+        num_agent_tensor = data['num_agent']
+        trans_matrices = data['trans_matrices']
+        
+        with torch.cuda.amp.autocast(enabled=False):
+            loss, result, _, ind_pred = self.model.inference(bev_seq, 
+                                                    bev_seq_next, 
+                                                    bev_teacher, 
+                                                    trans_matrices, 
+                                                    num_agent_tensor,
+                                                    batch_size,
+                                                    mask_ratio=mask_ratio)
+        
+        loss_value = loss.item()
         return loss_value, result, ind_pred.detach()
 
     def get_kd_loss(self, batch_size, data, fused_layer, num_agent, x_5, x_6, x_7):

@@ -2,6 +2,8 @@
 import argparse
 import os
 
+from yaml import load
+
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -227,7 +229,8 @@ def main(args):
             # adjust learning rate for mae
             # lr_sched.adjust_learning_rate(faf_module.optimizer, data_iter_step / len(test_data_loader) + epoch, args)
             with torch.no_grad():
-                loss, reconstruction, ind_rec = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=False)
+                # loss, reconstruction, ind_rec = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=False)
+                loss, reconstruction, ind_rec = faf_module.infer_mae_completion(data, batch_size, args.mask_ratio)
         else:
             with torch.no_grad():
                 loss, reconstruction = faf_module.step_completion(data, batch_size, trainable=False)
@@ -248,11 +251,13 @@ def main(args):
         # IoUEvaluator.add_batch(ind_rec, bev_seq)
         IoUEvaluator.update_IoU()
         # print(IoUEvaluator.every_batch_IoU)
-        # torch.save(reconstruction, "test-joint-reconstruction-epc4.pt")
-        # torch.save(target, "test-joint-target-epc4.pt")
-        # torch.save(bev_seq, "test-joint-bev-epc4.pt")
-        # torch.save(ind_rec, "test-joint-individual-epc4.pt")
-        # exit(1)
+        if args.save_vis:
+            print(IoUEvaluator.every_batch_IoU)
+            torch.save(reconstruction, os.path.join(model_load_path, "debug-cross-reconstruction-epc{}.pt".format(load_epoch-1)))
+            torch.save(target, os.path.join(model_load_path, "debug-cross-target-epc{}.pt".format(load_epoch-1)))
+            torch.save(bev_seq, os.path.join(model_load_path, "debug-cross-bev-epc{}.pt".format(load_epoch-1)))
+            torch.save(ind_rec, os.path.join(model_load_path, "debug-cross-individual-epc{}.pt".format(load_epoch-1)))
+            exit(1)
 
         running_loss_test.update(loss)
         et.set_postfix(loss=running_loss_test.avg)
@@ -260,7 +265,7 @@ def main(args):
     # show result
     total_IoU = IoUEvaluator.get_average_IoU()
     print("Occupancy IoU for test set:", total_IoU)
-    print(IoUEvaluator.evaluator.get_confusion())
+    # print(IoUEvaluator.evaluator.get_confusion())
     saver.write("Occupancy IoU for test set: {}\n".format(total_IoU))
     saver.flush()
 
@@ -349,6 +354,9 @@ if __name__ == "__main__":
     ## for test
     parser.add_argument(
         "--load_path", default=None, type=str, help="the path to the save model"
+    )
+    parser.add_argument(
+        "--save_vis", action="store_true", help="Whether save output for visualization"
     )
 
     torch.multiprocessing.set_sharing_strategy("file_system")

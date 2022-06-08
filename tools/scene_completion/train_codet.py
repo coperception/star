@@ -5,7 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from coperception.datasets import V2XSimDet
+from coperception.datasets import V2XSimDet, MultiTempV2XSimDet
 from coperception.configs import Config, ConfigGlobal
 from coperception.utils.CoDetModule import *
 from coperception.utils.loss import *
@@ -15,6 +15,10 @@ from coperception.utils import AverageMeter
 import glob
 import os
 
+from coperception.models.transformers import multiagent_mae
+import timm
+assert timm.__version__ == "0.3.2"  # version check
+import timm.optim.optim_factory as optim_factory
 
 def check_folder(folder_path):
     if not os.path.exists(folder_path):
@@ -41,7 +45,7 @@ def main(args):
     num_agent = args.num_agent
     # agent0 is the cross road
     agent_idx_range = range(1, num_agent) if args.no_cross_road else range(num_agent)
-    training_dataset = V2XSimDet(
+    training_dataset = MultiTempV2XSimDet(
         dataset_roots=[f"{args.data}/agent{i}" for i in agent_idx_range],
         config=config,
         config_global=config_global,
@@ -49,6 +53,7 @@ def main(args):
         bound="both",
         kd_flag=args.kd_flag,
         no_cross_road=args.no_cross_road,
+        time_stamp = args.time_stamp,
     )
     training_data_loader = DataLoader(
         training_dataset, shuffle=True, batch_size=batch_size, num_workers=num_workers
@@ -100,10 +105,15 @@ def main(args):
             layer_channel=256,
             num_agent=num_agent,
         )
+    elif args.com == "joint_mae" or  args.com == "ind_mae":
+        # Juexiao added for mae
+        model_completion = multiagent_mae.__dict__[args.mae_model](norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask)
+        # also include individual reconstruction: reconstruct then aggregate
     else:
         raise NotImplementedError("Fusion type: {args.com} not implemented")
 
     if not args.fine_tune:
+        print("do not fine tune the completion model..")
         for param in model_completion.parameters():
             param.requires_grad = False
 
@@ -114,8 +124,8 @@ def main(args):
         num_agent=num_agent,
     )
 
-    model = nn.DataParallel(model)
-    model_completion = nn.DataParallel(model_completion)
+    # model = nn.DataParallel(model)
+    # model_completion = nn.DataParallel(model_completion)
     model = model.to(device)
     model_completion = model_completion.to(device)
 
@@ -125,7 +135,11 @@ def main(args):
         "loc": WeightedSmoothL1LocalizationLoss(),
     }
 
-    optimizer_completion = optim.Adam(model_completion.parameters(), lr=args.lr)
+    if args.com == "ind_mae" or args.com == "joint_mae":
+        completion_param_groups = optim_factory.add_weight_decay(model_completion, 0.05)
+        optimizer_completion = optim.Adam(completion_param_groups, lr=args.lr, betas=(0.9, 0.95))
+    else:
+        optimizer_completion = optim.Adam(model_completion.parameters(), lr=args.lr)
 
     faf_module = FaFModule(model, model, config, optimizer, criterion, args.kd_flag)
 
@@ -137,17 +151,18 @@ def main(args):
         criterion,
         args.kd_flag,
     )
-    checkpoint_completion = torch.load(args.resume_completion)
+    checkpoint_completion = torch.load(args.resume_completion, map_location='cpu')
     completion_start_epoch = checkpoint_completion["epoch"] + 1
-    faf_module_completion.model.load_state_dict(
-        checkpoint_completion["model_state_dict"]
-    )
-    faf_module_completion.optimizer.load_state_dict(
-        checkpoint_completion["optimizer_state_dict"]
-    )
-    faf_module_completion.scheduler.load_state_dict(
-        checkpoint_completion["scheduler_state_dict"]
-    )
+    faf_module_completion.resume_from_cpu(checkpoint=checkpoint_completion, device=device, trainable=False)
+    # faf_module_completion.model.load_state_dict(
+    #     checkpoint_completion["model_state_dict"]
+    # )
+    # faf_module_completion.optimizer.load_state_dict(
+    #     checkpoint_completion["optimizer_state_dict"]
+    # )
+    # faf_module_completion.scheduler.load_state_dict(
+    #     checkpoint_completion["scheduler_state_dict"]
+    # )
 
     cross_path = "no_cross" if args.no_cross_road else "with_cross"
     model_save_path = check_folder(logger_root)
@@ -244,6 +259,7 @@ def main(args):
         for sample in t:
             (
                 padded_voxel_point_list,
+                padded_voxel_point_next_list,
                 padded_voxel_points_teacher_list,
                 label_one_hot_list,
                 reg_target_list,
@@ -286,9 +302,15 @@ def main(args):
                 "trans_matrices": trans_matrices,
             }
 
-            _, completed_point_cloud = faf_module_completion.step_completion(
-                data, batch_size, trainable=False
-            )
+            if args.com == "ind_mae" or args.com == "joint_mae":
+                # multi timestamp input bev supported in the data
+                data["bev_seq_next"] = torch.cat(tuple(padded_voxel_point_next_list), 0).to(device)
+                # loss, reconstruction, _ = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=False)
+                loss, completed_point_cloud, _ = faf_module_completion.infer_mae_completion(data, batch_size, args.mask_ratio)
+            else:
+                _, completed_point_cloud = faf_module_completion.step_completion(
+                    data, batch_size, trainable=False
+                )
 
             completed_point_cloud = completed_point_cloud.unsqueeze(1)
             completed_point_cloud = completed_point_cloud.permute(0, 1, 3, 4, 2)
@@ -323,12 +345,12 @@ def main(args):
             )
 
         faf_module.scheduler.step()
-        faf_module_completion.scheduler.step()
+        # faf_module_completion.scheduler.step()
 
         # save model
         if need_log:
             saver.write(
-                "{}\t{}\t{}\t{}\n".format(
+                "{}\t{}\t{}\n".format(
                     running_loss_disp,
                     running_loss_class,
                     running_loss_loc,
@@ -376,12 +398,12 @@ def main(args):
                     "loss": running_loss_disp.avg,
                 }
             torch.save(
-                save_dict, os.path.join(model_save_path, "epoch_" + str(epoch) + ".pth")
+                save_dict, os.path.join(model_save_path, "det_epoch_" + str(epoch) + ".pth")
             )
-            torch.save(
-                save_dict_completion,
-                os.path.join(model_save_path, "completion_epoch_" + str(epoch) + ".pth"),
-            )
+            # torch.save(
+            #     save_dict_completion,
+            #     os.path.join(model_save_path, "completion_epoch_" + str(epoch) + ".pth"),
+            # )
 
     if need_log:
         saver.close()
@@ -448,6 +470,25 @@ if __name__ == "__main__":
         type=int,
         help="Fine tune the completion model or not",
     )
+
+    ## ----- mae args added by Juexiao -----
+    parser.add_argument(
+        "--mask_ratio", default=0.50, type=float, help="The input mask ratio"
+    )
+    parser.add_argument(
+        "--mask", default="random", type=str, choices=["random", "complement"], help="Used in MAE training"
+    )
+    parser.add_argument(
+        "--time_stamp", default=2, type=int, help="The total number of time stamp to use"
+    )
+    parser.add_argument(
+        "--mae_model", default="fusion_bev_mae_vit_base_patch8", type=str, 
+        help="The mae model to use"
+    )
+    parser.add_argument(
+        "--norm_pix_loss", default=False, type=bool, help="Whether normalize target pixel value for loss"
+    )
+    ## ----------------------
 
     torch.multiprocessing.set_sharing_strategy("file_system")
     args = parser.parse_args()
