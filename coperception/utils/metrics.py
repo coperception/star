@@ -8,6 +8,7 @@ remove the keys for scales, only one 1_1 scale is used
 import numpy as np
 import torch
 import copy
+import torch.nn as nn
 
 
 class iouEval:
@@ -129,7 +130,11 @@ class Metrics:
   def __init__(self, nbr_classes, num_iterations_epoch):
 
     self.nbr_classes = nbr_classes # should be 2
-    self.evaluator = iouEval(self.nbr_classes, [])
+    self.scales = ['1', '8']
+    self.evaluator = dict()
+    self.evaluator['1'] = iouEval(self.nbr_classes, [])
+    self.down_scale = nn.MaxPool3d((2, 2, 2), stride=(2, 2, 2), padding=(1,0,0))
+    self.evaluator['8'] = iouEval(self.nbr_classes, []) # maxpooled 2,2,2
     # self.evaluator = iouEval(self.nbr_classes, [])
     self.losses_track = LossesTrackEpoch(num_iterations_epoch)
     self.every_batch_IoU = []
@@ -142,10 +147,20 @@ class Metrics:
     # binarize and passing to cpu
     # for key in prediction:
     #   prediction[key] = torch.argmax(prediction[key], dim=1).data.cpu().numpy()
+    # print("prediction", prediction.shape)
     prediction = prediction.detach().cpu()
+    down_pred = self.down_scale(prediction.unsqueeze(1))
+    down_target = self.down_scale(target.unsqueeze(1))
+    down_target = down_target.cpu().numpy() #[6, 1, 7, 128, 128]
+    # print(down_pred.size())
+    
     prediction[prediction>=0.5] = 1.0
     prediction[prediction<0.5] = 0.0
     prediction = prediction.numpy()
+
+    down_pred[down_pred>=0.5] = 1.0
+    down_pred[down_pred<0.5] = 0.0
+    down_pred = down_pred.numpy()
     ## juexiao
     # print("prediction", prediction.shape)
     # target[target>0.5] = 1.0
@@ -155,7 +170,10 @@ class Metrics:
 
     prediction = prediction.reshape(-1).astype('int64')
     target = target.reshape(-1).astype('int64')
-    self.evaluator.addBatch(prediction, target)
+    down_pred = down_pred.reshape(-1).astype('int64')
+    down_target = down_target.reshape(-1).astype('int64')
+    self.evaluator['1'].addBatch(prediction, target)
+    self.evaluator['8'].addBatch(down_pred, down_target)
 
     return
 
@@ -166,8 +184,8 @@ class Metrics:
     mask = (target != 255)
     return mask
 
-  def get_occupancy_IoU(self):
-    conf = self.evaluator.get_confusion()
+  def get_occupancy_IoU(self, scale):
+    conf = self.evaluator[scale].get_confusion()
     tp_occupancy = np.sum(conf[1:, 1:])
     fp_occupancy = np.sum(conf[1:, 0])
     fn_occupancy = np.sum(conf[0, 1:])
@@ -178,12 +196,13 @@ class Metrics:
 
   # Juexiao
   def update_IoU(self):
-    self.every_batch_IoU.append(self.get_occupancy_IoU())
-    self.evaluator.reset()
+    self.every_batch_IoU.append(np.asarray([self.get_occupancy_IoU('1'), self.get_occupancy_IoU('8')]))
+    self.evaluator['1'].reset()
+    self.evaluator['8'].reset()
   
   def get_average_IoU(self):
     IoUs = np.asarray(self.every_batch_IoU)
-    return np.mean(IoUs)
+    return np.mean(IoUs, axis=0)
 
   def get_occupancy_Precision(self):
     conf = self.evaluator.get_confusion()

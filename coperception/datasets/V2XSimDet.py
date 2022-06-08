@@ -616,15 +616,22 @@ class MultiTempV2XSimDet(V2XSimDet):
             # use next time stamp image
             # if no next time stamp, use the same voxel (a plausible pseudo next)
             # -----------------------------------------
-            # TODO: more than 2 time stamps
+            # TODO: future -> past
             padded_voxel_points_next_list = [] # a list holding every padded_voxel_points_next for all the multi timestamp
-            end_frame_idx = self.time_stamp - 1 + idx
+            # end_frame_idx = self.time_stamp - 1 + idx
+            # current_scene = self.seq_scenes[agent_id][idx]
+            # for nextframe_idx in range(idx+1, end_frame_idx+1):
+            #     while ((nextframe_idx) > (len(self.seq_scenes[agent_id])-1) or self.seq_scenes[agent_id][nextframe_idx] != current_scene):
+            #         # padded_voxel_points_next = padded_voxel_points
+            #         nextframe_idx = nextframe_idx - 1 # still use last frame as the next frame
+            # use past features
+            end_frame_idx = - self.time_stamp + 1 + idx
             current_scene = self.seq_scenes[agent_id][idx]
-            for nextframe_idx in range(idx+1, end_frame_idx+1):
-                while ((nextframe_idx) > (len(self.seq_scenes[agent_id])-1) or self.seq_scenes[agent_id][nextframe_idx] != current_scene):
+            for nextframe_idx in range(idx-1, end_frame_idx-1, -1):
+                while ( nextframe_idx < 0 or self.seq_scenes[agent_id][nextframe_idx] != current_scene):
                     # padded_voxel_points_next = padded_voxel_points
-                    nextframe_idx = nextframe_idx - 1 # still use last frame as the next frame
-                # padded_voxel_points_next = list()
+                    nextframe_idx = nextframe_idx + 1 # still use last frame as the next frame
+
                 next_seq_file = self.seq_files[agent_id][nextframe_idx]
                 next_gt_data_handle = np.load(next_seq_file, allow_pickle=True)
                 if next_gt_data_handle == 0:
