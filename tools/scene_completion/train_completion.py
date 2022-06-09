@@ -129,7 +129,8 @@ def main(args):
         )
     elif args.com == "joint_mae" or  args.com == "ind_mae":
         # Juexiao added for mae
-        model = multiagent_mae.__dict__[args.mae_model](norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask)
+        model = multiagent_mae.__dict__[args.mae_model](norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask,
+                                                        encode_partial=args.encode_partial, no_temp_emb=args.no_temp_emb, decode_singletemp=args.decode_singletemp)
         # also include individual reconstruction: reconstruct then aggregate
     else:
         raise NotImplementedError("Invalid argument com:" + args.com)
@@ -440,6 +441,17 @@ if __name__ == "__main__":
         default="",
         type=str,
         help="The path to automatically reload the latest pth",
+    )
+
+    ## agrs for ablation study:
+    parser.add_argument(
+        "--encode_partial", action="store_true", help="encode partial information before masking"
+    )
+    parser.add_argument(
+        "--no_temp_emb", action="store_true", help="Do not use temp embedding"
+    )
+    parser.add_argument(
+        "--decode_singletemp", action="store_true", help="decode single stemp"
     )
 
     torch.multiprocessing.set_sharing_strategy("file_system")

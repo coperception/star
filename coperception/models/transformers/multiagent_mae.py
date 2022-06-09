@@ -698,7 +698,8 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
     def __init__(self, img_size=224, patch_size=16, in_chans=3,
                  embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
-                 mlp_ratio=4., norm_layer=nn.LayerNorm, decoder_head="mlp", norm_pix_loss=False, time_stamp=1, mask_method="random"):
+                 mlp_ratio=4., norm_layer=nn.LayerNorm, decoder_head="mlp", norm_pix_loss=False, time_stamp=1, 
+                 mask_method="random", encode_partial=False, no_temp_emb=False, decode_singletemp=False):
         super(AmortizedIndivMMAEViT, self).__init__(
                 img_size=img_size, 
                 patch_size=patch_size, 
@@ -731,6 +732,20 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         else:
             raise NotImplementedError(mask_method)
 
+        # ---- ablation study for encoder ------
+        if encode_partial:
+            print("encode after masking")
+            self.forward_encoder = self.forward_encoder_partial
+        else:
+            print("encoder BEFORE masking")
+            self.forward_encoder = self.forward_encoder_all
+
+        # ---- ablation study for decoder ------
+        self.decode_singletemp = decode_singletemp
+        self.no_temp_emb = no_temp_emb
+
+        
+
     def amortized_random_masking(self, x_ts, mask_ratio):
         """
         Random masking for each data of each timestamp.
@@ -757,7 +772,11 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         BA = BAT // self.time_stamp
         # add temporal embedding
         x_ts_ = x_ts_.reshape(BA, self.time_stamp, L, D)
-        x_ts_ = x_ts_ + self.decoder_temp_embed #check dim
+
+        # ---- ablation: use time emb -----
+        if not self.no_temp_emb:
+            x_ts_ = x_ts_ + self.decoder_temp_embed #check dim
+        # ----------------------------------
 
         # figure out how to fill in the other timestamp
         x_ts_unp = x_ts_.reshape(BA, self.time_stamp, self.patch_h, self.patch_w, x_ts_.shape[-1])
@@ -769,15 +788,18 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         mask_filled = reverse_mask[:,0,:,:] # current timestamp, 
         x_curr = x_ts_unp[:,0,:,:,:] #[BxA, h, w, D]
         # print("x_curr size", x_curr.size())
-        for ti in range(self.time_stamp-1):
-            # not filled previously but can be filled by ti+1
-            mask_curr = reverse_mask[:,ti+1, :, :]
-            mask_select = ((mask_filled==0.) & (mask_curr>0.)).unsqueeze(-1)
-            x_curr = torch.where(mask_select, x_ts_unp[:, ti+1, :, :, :], x_curr)
-            mask_filled = mask_filled + mask_curr # update the mask
-        x_curr = x_curr.permute(0,3,1,2) #[BxA, C, H, W]
-     
-        return x_curr
+        if self.decode_singletemp:
+            x_curr = x_curr.permute(0,3,1,2)
+            return x_curr
+        else:
+            for ti in range(self.time_stamp-1):
+                # not filled previously but can be filled by ti+1
+                mask_curr = reverse_mask[:,ti+1, :, :]
+                mask_select = ((mask_filled==0.) & (mask_curr>0.)).unsqueeze(-1)
+                x_curr = torch.where(mask_select, x_ts_unp[:, ti+1, :, :, :], x_curr)
+                mask_filled = mask_filled + mask_curr # update the mask
+            x_curr = x_curr.permute(0,3,1,2) #[BxA, C, H, W]
+            return x_curr
 
     def amortized_complement_masking(self, x_ts, mask_ratio):
         """
@@ -828,13 +850,20 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         realL = ids_restore.size(1)
         BA = BAT // self.time_stamp
         x_ts_ = x_ts_.reshape(BA, self.time_stamp, L, D)
-        x_ts_ = x_ts_ + self.decoder_temp_embed #check dim
-        x_restore = []
-        for ti in range(self.time_stamp):
-            x_restore.append(x_ts_[:,ti, :, :]) #[BA, L, D]
-        x_restore = torch.cat(x_restore, dim=1)
-        x_restore = x_restore[:, :realL, :]
-        x_restore = torch.gather(x_restore, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x_ts.shape[2]))
+        if not self.no_temp_emb:
+            x_ts_ = x_ts_ + self.decoder_temp_embed #check dim
+        if self.decode_singletemp:
+            x_curr = x_ts_[:,0, :realL, :] # [BA, realL, D]
+            mask_tokens = self.mask_token.repeat(x_curr.shape[0], ids_restore.shape[1] + 1 - x_curr.shape[1], 1)
+            x_curr = torch.cat([x_curr, mask_tokens], dim=1)  # no cls token
+            x_restore = torch.gather(x_curr, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x_curr.shape[2]))  # unshuffle
+        else:
+            x_restore = []
+            for ti in range(self.time_stamp):
+                x_restore.append(x_ts_[:,ti, :, :]) #[BA, L, D]
+            x_restore = torch.cat(x_restore, dim=1)
+            x_restore = x_restore[:, :realL, :]
+            x_restore = torch.gather(x_restore, dim=1, index=ids_restore.unsqueeze(-1).repeat(1, 1, x_ts.shape[2]))
 
         feature_maps = x_restore.reshape(BA, self.patch_h, self.patch_w, D)
         return feature_maps
@@ -916,7 +945,7 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         # print('feat fuse mat size', feat_fuse_mat.size())
         return fused_images
 
-    def forward_encoder(self, x1, x_next, mask_ratio):
+    def forward_encoder_all(self, x1, x_next, mask_ratio):
         """
         x1: [bxa, C, H, W]
         x_next: [bxa, ts-1, C, H, W] beq_next_frames
@@ -953,6 +982,48 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         # TODO: mask ONLY for transmission, encode the complete sequence
         x_masked, mask, ids_restore = self.masking_handle(x, mask_ratio)
         x = self.compressor(x_masked)
+
+        return x, mask, ids_restore
+
+    def forward_encoder_partial(self, x1, x_next, mask_ratio):
+        """
+        x1: [bxa, C, H, W]
+        x_next: [bxa, ts-1, C, H, W] beq_next_frames
+        """
+        # cat x1 and x_next to encoder independently
+        BA, C, H, W = x1.size()
+        x1 = x1.unsqueeze(1)
+        if self.time_stamp>1:
+            x_ind = torch.cat((x1, x_next), dim=1) # [bxa, ts, C, H, W]
+        else:
+            x_ind = x1
+        # print(x_ind.size())
+        assert x_ind.size(1) == self.time_stamp
+        x_ind = x_ind.reshape(BA*self.time_stamp, C, H, W)
+        # embed patches
+        x_ind = self.patch_embed(x_ind)
+        x_ind = x_ind + self.pos_embed[:, 1:, :]
+
+        # mask before transformer encoding
+        # amortized masking, complement and random
+        x_masked, mask, ids_restore = self.masking_handle(x_ind, mask_ratio)
+        # print(x_masked.size())
+        # print(mask.size())
+        for blk in self.blocks:
+            x_masked = blk(x_masked)
+        x = self.norm(x_masked)
+        x = self.compressor(x)
+
+        # # -------- encoder then mask ----------
+        # # apply Transformer blocks
+        # for blk in self.blocks:
+        #     x_ind = blk(x_ind)
+        # x = self.norm(x_ind)
+        # # compress for communication
+        # # mask ONLY for transmission, encode the complete sequence
+        # x_masked, mask, ids_restore = self.masking_handle(x, mask_ratio)
+        # x = self.compressor(x_masked)
+        # # --------------------------------------
 
         return x, mask, ids_restore
 
@@ -1005,10 +1076,6 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         return loss
 
     def forward_bce_loss(self, target, pred):
-        # target [B, C, H, W]
-        # pred [B, class, C, H, W]
-        # print(target.size())
-        # print(pred.size())
         target = target.type(torch.LongTensor).to(pred.device)
         loss = self.cls_loss(pred, target)
         return loss
@@ -1074,6 +1141,13 @@ def amo_individual_bev_multi_mae_vit_base_patch8_dec512d8b(**kwargs):
 def amo_individual_bev_multi_mae_vit_base_patch16_dec512d8b(**kwargs):
     model = AmortizedIndivMMAEViT(
         img_size=256, patch_size=16, in_chans=13, embed_dim=768, depth=12, num_heads=12,
+        decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="mlp", **kwargs)
+    return model
+
+def amo_individual_bev_multi_mae_vit_base_patch32_dec512d8b(**kwargs):
+    model = AmortizedIndivMMAEViT(
+        img_size=256, patch_size=32, in_chans=13, embed_dim=768, depth=12, num_heads=12,
         decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="mlp", **kwargs)
     return model
@@ -1178,6 +1252,7 @@ ind_bev_mae_vit_base_patch8 = individual_bev_multi_mae_vit_base_patch8_dec512d8b
 amortized_ind_patch8 = amo_individual_bev_multi_mae_vit_base_patch8_dec512d8b
 amortized_ind_patch8_shallow = amo_individual_bev_multi_mae_vit_base_patch8_dec512d6b
 amortized_ind_patch16 = amo_individual_bev_multi_mae_vit_base_patch16_dec512d8b
+amortized_ind_patch32 = amo_individual_bev_multi_mae_vit_base_patch32_dec512d8b
 amortized_ind_patch4 = amo_individual_bev_multi_mae_vit_base_patch4_dec512d8b
 amortized_joint_patch8_shallow = amo_fusion_bev_multi_mae_vit_base_patch8_dec512d6b
 amortized_joint_patch16_shallow = amo_fusion_bev_multi_mae_vit_base_patch16_dec512d6b

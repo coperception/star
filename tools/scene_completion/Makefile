@@ -30,8 +30,11 @@ min_lr := 0.
 # mae_load_path := logs-amortized-ts1-complement=classification/ind_mae/with_cross/completion_epoch_20.pth
 test_load_path := $(test_model_path)logs-amortized-ts2-complement-ratio0.5-ps8=classification/ind_mae/no_cross/completion_epoch_3.pth
 test_batch := 1
-# logpath := logs-amortized-ts$(time_stamp)-$(mask)-ratio$(mask_ratio)-ps$(patch_size)-convk11=classification
-logpath := logs-amortized-ts$(time_stamp)-$(mask)=classification
+logpath := logs-amortized-ts$(time_stamp)-$(mask)-ratio$(mask_ratio)-ps$(patch_size)=main
+enc_logpath := logs-amortized-ts$(time_stamp)-$(mask)-ratio$(mask_ratio)-ps$(patch_size)=ablate-enc
+dec_logpath := logs-amortized-ts$(time_stamp)-$(mask)-ratio$(mask_ratio)-ps$(patch_size)=ablate-dec
+temp_logpath := logs-amortized-ts$(time_stamp)-$(mask)-ratio$(mask_ratio)-ps$(patch_size)=ablate-temp
+# logpath := logs-amortized-ts$(time_stamp)-$(mask)=classification
 # If given, the model will resume from its most recent (by modification time) check point
 auto_resume_path := $(logpath)
 
@@ -53,3 +56,12 @@ test_completion_save:
 test_completion_with_cross:
 	python test_completion.py --data $(training_data) --com $(com) --log --batch $(test_batch) --logpath $(logpath) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) --load_path $(mae_load_path)
 
+# ablation study
+train_completion_ablate_encoder:
+	python train_completion.py --data $(training_data) --com $(com) --log --batch $(batch_size) --nepoch $(nepoch) --logpath $(enc_logpath) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) --lr $(lr) --no_cross_road  --auto_resume_path $(enc_logpath) --encode_partial
+
+train_completion_ablate_decoder:
+	python train_completion.py --data $(training_data) --com $(com) --log --batch $(batch_size) --nepoch $(nepoch) --logpath $(dec_logpath) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) --lr $(lr) --no_cross_road  --auto_resume_path $(dec_logpath) --decode_singletemp
+
+train_completion_ablate_temp:
+	python train_completion.py --data $(training_data) --com $(com) --log --batch $(batch_size) --nepoch $(nepoch) --logpath $(temp_logpath) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) --lr $(lr) --no_cross_road  --auto_resume_path $(temp_logpath) --no_temp_emb
