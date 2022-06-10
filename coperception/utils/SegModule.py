@@ -64,6 +64,7 @@ class SegModule(object):
             )
 
         if self.com:
+            print("communication happening...")
             if self.kd_flag:
                 pred, x9, x8, x7, x6, x5, fused_layer = self.model(
                     bev, data["trans_matrices"], data["num_sensor"]

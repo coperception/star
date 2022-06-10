@@ -74,9 +74,10 @@ class Config(object):
         self.flag = ""
 
         # The specifications for BEV maps
-        # self.voxel_size = (0.25, 0.25, 0.4)
-        self.voxel_size = (0.375, 0.375, 0.4)
-        area_range = 48.0
+        self.voxel_size = (0.25, 0.25, 0.4)
+        area_range = 32.0
+        # self.voxel_size = (0.375, 0.375, 0.4)
+        # area_range = 48.0
         self.area_extents = (
             np.array(
                 [[-area_range, area_range], [-area_range, area_range], [-8.0, -3.0]]

@@ -178,7 +178,7 @@ def main(args):
     for pth_file in os.listdir(
         os.path.join(auto_resume_path, f"{args.com}/{cross_path}")
     ):
-        if pth_file.startswith("epoch_") and pth_file.endswith(".pth"):
+        if pth_file.startswith("det_epoch_") and pth_file.endswith(".pth"):
             has_valid_pth = True
             break
 

@@ -140,16 +140,6 @@ def main(args):
 
     model_load_path = args.load_path[: args.load_path.rfind("/")]
 
-    log_file_name = os.path.join(model_load_path, "log_test_completion.txt")
-    saver = open(log_file_name, "a")
-    saver.write("GPU number: {}\n".format(torch.cuda.device_count()))
-    saver.flush()
-
-    # Logging the details for this experiment
-    saver.write("command line: {}\n".format(" ".join(sys.argv[1:])))
-    saver.write(args.__repr__() + "\n\n")
-    saver.flush()
-
     checkpoint = torch.load(args.load_path, map_location='cpu')
     load_epoch = checkpoint["epoch"] + 1
     model.load_state_dict(checkpoint["model_state_dict"])
@@ -158,6 +148,16 @@ def main(args):
     # faf_module.mae_loss_scaler.load_state_dict(checkpoint["mae_scaler_state_dict"])
     print("Load model from {}, at epoch {}".format(args.load_path, load_epoch - 1))
     model = model.to(device)
+
+    log_file_name = os.path.join(model_load_path, "log_test_completion_{}.txt".format(load_epoch-1))
+    saver = open(log_file_name, "a")
+    saver.write("GPU number: {}\n".format(torch.cuda.device_count()))
+    saver.flush()
+
+    # Logging the details for this experiment
+    saver.write("command line: {}\n".format(" ".join(sys.argv[1:])))
+    saver.write(args.__repr__() + "\n\n")
+    saver.flush()
 
     # Juexiao added for mae
     if args.com == "ind_mae" or args.com == "joint_mae":
