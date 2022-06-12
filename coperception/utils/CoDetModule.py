@@ -340,12 +340,12 @@ class FaFModule(object):
             return loss.item(), loss_cls.item(), loss_loc.item()
 
     # used by scene completion task
-    def step_completion(self, data, batch_size, loss_fn='mse', trainable=False):
+    def step_completion(self, data, batch_size, loss_fn='ce', trainable=False):
         bev_seq = data['bev_seq']
         trans_matrices = data['trans_matrices']
         num_agent = data['num_agent']
 
-        result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
+        result, ind_pred = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
 
         loss_fn_dict = {
             'mse': nn.MSELoss(),
@@ -357,9 +357,12 @@ class FaFModule(object):
 
         loss = -1
         if trainable:
-            labels = data['bev_seq_teacher']
-            labels = labels.permute(0, 1, 4, 2, 3).squeeze()  # (Batch, seq, z, h, w)
-            loss = 10000 * loss_fn_dict[loss_fn](result, labels)
+            # labels = data['bev_seq_teacher']
+            # labels = labels.permute(0, 1, 4, 2, 3).squeeze()  # (Batch, seq, z, h, w)
+            # loss = 10000 * loss_fn_dict[loss_fn](result, labels)
+            target = bev_seq.permute(0, 1, 4, 2, 3).squeeze(1)
+            target = target.type(torch.LongTensor).to(ind_pred.device)
+            loss = loss_fn_dict[loss_fn](ind_pred, target)
 
             if self.MGDA:
                 self.optimizer_encoder.zero_grad()
@@ -379,7 +382,7 @@ class FaFModule(object):
         trans_matrices = data['trans_matrices']
         num_agent = data['num_agent']
 
-        result = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
+        result, ind_pred = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
 
         return result
 

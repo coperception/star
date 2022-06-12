@@ -78,6 +78,12 @@ class Backbone(nn.Module):
             self.conv9_2 = nn.Conv2d(13, 13, kernel_size=1, stride=1, padding=0)
             self.bn9_2 = nn.BatchNorm2d(13)
 
+            self.conv9_3 = nn.Conv2d(32, 13, kernel_size=1, stride=1, padding=0)
+            self.bn9_3 = nn.BatchNorm2d(13)
+
+            self.conv9_4 = nn.Conv2d(13, 13, kernel_size=1, stride=1, padding=0)
+            self.bn9_4 = nn.BatchNorm2d(13)
+
         self.compress_level = compress_level
         if compress_level > 0:
             assert compress_level <= 8
@@ -245,10 +251,13 @@ class Backbone(nn.Module):
         res_x = F.relu(self.bn8_2(self.conv8_2(x_8)))
 
         if self.train_completion:
-            res_x = F.relu(self.bn9_1(self.conv9_1(res_x)))
-            res_x = F.relu(self.bn9_2(self.conv9_2(res_x)))
+            occ_x = F.relu(self.bn9_1(self.conv9_1(res_x)))
+            occ_x = F.relu(self.bn9_2(self.conv9_2(occ_x)))
+            # get binary classification logits
+            free_x = F.relu(self.bn9_3(self.conv9_3(res_x)))
+            free_x = F.relu(self.bn9_4(self.conv9_4(free_x)))
 
-        # TODO: apply sigmoid
+            res_x = torch.stack((free_x, occ_x), dim=1)
 
         if kd_flag:
             return [res_x, x_7, x_6, x_5]
@@ -259,8 +268,8 @@ class Backbone(nn.Module):
 class STPN_KD(Backbone):
     """Used by non-intermediate models. Pass the output from encoder directly to decoder."""
 
-    def __init__(self, height_feat_size=13, compress_level=0):
-        super().__init__(height_feat_size, compress_level)
+    def __init__(self, height_feat_size=13, compress_level=0, train_completion=False):
+        super().__init__(height_feat_size, compress_level, train_completion)
 
     def forward(self, x):
         batch, seq, z, h, w = x.size()

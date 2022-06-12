@@ -17,8 +17,9 @@ class NonIntermediateModelBase(DetModelBase):
         kd_flag=True,
         num_agent=5,
         compress_level=0,
+        train_completion=False,
     ):
         super(NonIntermediateModelBase, self).__init__(
             config, layer, in_channels, kd_flag, num_agent
         )
-        self.stpn = STPN_KD(config.map_dims[2], compress_level)
+        self.stpn = STPN_KD(config.map_dims[2], compress_level, train_completion)

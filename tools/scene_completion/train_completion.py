@@ -57,7 +57,7 @@ def main(args):
     device_num = torch.cuda.device_count()
     print("device number", device_num)
 
-    if args.com in {"mean", "max", "cat", "sum", "v2v", "ind_mae", "joint_mae"}:
+    if args.com in {"mean", "max", "cat", "sum", "v2v", "ind_mae", "joint_mae", "late"}:
         flag = args.com
     else:
         raise ValueError(f"com: {args.com} is not supported")
@@ -132,6 +132,14 @@ def main(args):
         model = multiagent_mae.__dict__[args.mae_model](norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask,
                                                         encode_partial=args.encode_partial, no_temp_emb=args.no_temp_emb, decode_singletemp=args.decode_singletemp)
         # also include individual reconstruction: reconstruct then aggregate
+    elif args.com == "late":
+        model = FaFNet(
+            config,
+            layer=args.layer,
+            kd_flag=args.kd_flag,
+            num_agent=num_agent,
+            train_completion=True,
+        )
     else:
         raise NotImplementedError("Invalid argument com:" + args.com)
 
