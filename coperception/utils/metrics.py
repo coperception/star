@@ -130,11 +130,12 @@ class Metrics:
   def __init__(self, nbr_classes, num_iterations_epoch):
 
     self.nbr_classes = nbr_classes # should be 2
-    self.scales = ['1', '8']
+    self.scales = ['1', '2', '4']
     self.evaluator = dict()
     self.evaluator['1'] = iouEval(self.nbr_classes, [])
     self.down_scale = nn.MaxPool3d((2, 2, 2), stride=(2, 2, 2), padding=(1,0,0))
-    self.evaluator['8'] = iouEval(self.nbr_classes, []) # maxpooled 2,2,2
+    self.evaluator['2'] = iouEval(self.nbr_classes, []) # maxpooled 2,2,2
+    self.evaluator['4'] = iouEval(self.nbr_classes, [])
     # self.evaluator = iouEval(self.nbr_classes, [])
     self.losses_track = LossesTrackEpoch(num_iterations_epoch)
     self.every_batch_IoU = []
@@ -149,32 +150,43 @@ class Metrics:
     #   prediction[key] = torch.argmax(prediction[key], dim=1).data.cpu().numpy()
     # print("prediction", prediction.shape)
     prediction = prediction.detach().cpu()
-    down_pred = self.down_scale(prediction.unsqueeze(1))
-    down_target = self.down_scale(target.unsqueeze(1))
-    down_target = down_target.cpu().numpy() #[6, 1, 7, 128, 128]
+    scale2_pred = self.down_scale(prediction.unsqueeze(1))
+    scale2_target = self.down_scale(target.unsqueeze(1))
+    scale4_pred = self.down_scale(scale2_pred)
+    scale4_target = self.down_scale(scale2_target)
     # print(down_pred.size())
     
     prediction[prediction>=0.5] = 1.0
     prediction[prediction<0.5] = 0.0
     prediction = prediction.numpy()
 
-    down_pred[down_pred>=0.5] = 1.0
-    down_pred[down_pred<0.5] = 0.0
-    down_pred = down_pred.numpy()
+    scale2_pred[scale2_pred>=0.5] = 1.0
+    scale2_pred[scale2_pred<0.5] = 0.0
+    scale2_pred = scale2_pred.numpy()
+
+    scale4_pred[scale4_pred>=0.5] = 1.0
+    scale4_pred[scale4_pred<0.5] = 0.0
+    scale4_pred = scale4_pred.numpy()
     ## juexiao
     # print("prediction", prediction.shape)
     # target[target>0.5] = 1.0
     # target[target<=0.5] = 0.0
     target = target.cpu().numpy()
+    scale2_target = scale2_target.cpu().numpy() #[6, 1, 7, 128, 128]
+    scale4_target = scale4_target.cpu().numpy() #[6, 1, 4, 64, 64]
     # print("target", target.shape)
+    # print("scale 2 target", scale2_target.shape)
+    # print("scale 4 target", scale4_target.shape)
 
     prediction = prediction.reshape(-1).astype('int64')
     target = target.reshape(-1).astype('int64')
-    down_pred = down_pred.reshape(-1).astype('int64')
-    down_target = down_target.reshape(-1).astype('int64')
+    scale2_pred = scale2_pred.reshape(-1).astype('int64')
+    scale2_target = scale2_target.reshape(-1).astype('int64')
+    scale4_pred = scale4_pred.reshape(-1).astype('int64')
+    scale4_target = scale4_target.reshape(-1).astype('int64')
     self.evaluator['1'].addBatch(prediction, target)
-    self.evaluator['8'].addBatch(down_pred, down_target)
-
+    self.evaluator['2'].addBatch(scale2_pred, scale2_target)
+    self.evaluator['4'].addBatch(scale4_pred, scale4_target)
     return
 
   def get_eval_mask_Lidar(self, target):
@@ -196,9 +208,10 @@ class Metrics:
 
   # Juexiao
   def update_IoU(self):
-    self.every_batch_IoU.append(np.asarray([self.get_occupancy_IoU('1'), self.get_occupancy_IoU('8')]))
+    self.every_batch_IoU.append(np.asarray([self.get_occupancy_IoU('1'), self.get_occupancy_IoU('2'), self.get_occupancy_IoU('4')]))
     self.evaluator['1'].reset()
-    self.evaluator['8'].reset()
+    self.evaluator['2'].reset()
+    self.evaluator['4'].reset()
   
   def get_average_IoU(self):
     IoUs = np.asarray(self.every_batch_IoU)

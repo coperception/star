@@ -1,6 +1,9 @@
 # test completion using occupancy IoU as the metric
 import argparse
 import os
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 from yaml import load
 
@@ -16,8 +19,6 @@ from coperception.utils.loss import *
 from coperception.models.det import *
 from coperception.models.transformers import multiagent_mae
 from coperception.utils import AverageMeter
-import matplotlib
-matplotlib.use('Agg')
 
 # from mae script -----------
 import timm
@@ -59,7 +60,7 @@ def main(args):
     device_num = torch.cuda.device_count()
     print("device number", device_num)
 
-    if args.com in {"mean", "max", "cat", "sum", "v2v", "ind_mae", "joint_mae"}:
+    if args.com in {"mean", "max", "cat", "sum", "v2v", "ind_mae", "joint_mae", "late"}:
         flag = args.com
     else:
         raise ValueError(f"com: {args.com} is not supported")
@@ -133,6 +134,14 @@ def main(args):
         # Juexiao added for mae
         model = multiagent_mae.__dict__[args.mae_model](norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask)
         # also include individual reconstruction: reconstruct then aggregate
+    elif args.com == "late":
+        model = FaFNet(
+            config,
+            layer=args.layer,
+            kd_flag=args.kd_flag,
+            num_agent=num_agent,
+            train_completion=True,
+        )
     else:
         raise NotImplementedError("Invalid argument com:" + args.com)
 
@@ -149,7 +158,7 @@ def main(args):
     print("Load model from {}, at epoch {}".format(args.load_path, load_epoch - 1))
     model = model.to(device)
 
-    log_file_name = os.path.join(model_load_path, "log_test_completion_{}.txt".format(load_epoch-1))
+    log_file_name = os.path.join(model_load_path, "log_test_completion_local_{}.txt".format(load_epoch-1))
     saver = open(log_file_name, "a")
     saver.write("GPU number: {}\n".format(torch.cuda.device_count()))
     saver.flush()
@@ -253,10 +262,27 @@ def main(args):
         # print(IoUEvaluator.every_batch_IoU)
         if args.save_vis:
             print(IoUEvaluator.every_batch_IoU)
-            torch.save(reconstruction, os.path.join(model_load_path, "debug-cross-reconstruction-epc{}.pt".format(load_epoch-1)))
-            torch.save(target, os.path.join(model_load_path, "debug-cross-target-epc{}.pt".format(load_epoch-1)))
-            torch.save(bev_seq, os.path.join(model_load_path, "debug-cross-bev-epc{}.pt".format(load_epoch-1)))
-            torch.save(ind_rec, os.path.join(model_load_path, "debug-cross-individual-epc{}.pt".format(load_epoch-1)))
+            target_img = torch.max(target.cpu(), dim=1, keepdim=True)[0]
+            recon_img = torch.max(reconstruction.detach().cpu(), dim=1, keepdim=True)[0]
+            indi_img = torch.max(ind_rec.cpu(), dim=1, keepdim=True)[0]
+            start_agent_idx = 0 if args.no_cross_road else 1
+            for kid in range(start_agent_idx, num_agent):
+                recon_save = "reconstruction-epc{}-id{}-agent{}.png".format(load_epoch-1, data_iter_step, kid)
+                target_save = "target-epc{}-id{}-agent{}.png".format(load_epoch-1, data_iter_step, kid)
+                indi_save = "individual-epc{}-id{}-agent{}.png".format(load_epoch-1, data_iter_step, kid)
+                plt.imshow(target_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12, cmap="Purples")
+                plt.axis('off')
+                plt.savefig(os.path.join(model_load_path, target_save))
+                plt.imshow(recon_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12, cmap="Purples")
+                plt.axis('off')
+                plt.savefig(os.path.join(model_load_path, recon_save))
+                plt.imshow(indi_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12, cmap="Purples")
+                plt.axis('off')
+                plt.savefig(os.path.join(model_load_path,indi_save))
+            # torch.save(reconstruction, os.path.join(model_load_path, "reconstruction-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
+            # torch.save(target, os.path.join(model_load_path, "target-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
+            # torch.save(bev_seq, os.path.join(model_load_path, "bev-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
+            # torch.save(ind_rec, os.path.join(model_load_path, "individual-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
             exit(1)
 
         running_loss_test.update(loss)
