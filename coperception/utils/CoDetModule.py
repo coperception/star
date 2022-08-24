@@ -454,6 +454,103 @@ class FaFModule(object):
         loss_value = loss.item()
         return loss_value, result, ind_pred.detach()
 
+    def step_vae_completion(self, data, batch_size, loss_fn='ce', trainable=False):
+        bev_seq = data['bev_seq']
+        trans_matrices = data['trans_matrices']
+        num_agent = data['num_agent']
+
+        vq_loss, result, ind_recon, perplexity = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
+        target = bev_seq.squeeze(1).permute(0,3,1,2).detach()
+        # print("target", target.size())
+        # recon_error = F.mse_loss(ind_recon, target)
+        ## classification task ##
+        # target = bev_seq.permute(0, 1, 4, 2, 3).squeeze(1)
+        target = target.type(torch.LongTensor).to(ind_recon.device)
+        # print("target", target.size())
+        # print("ind_recon", ind_recon.size(), ind_recon.type())
+        loss_fn = nn.CrossEntropyLoss()
+        recon_error = loss_fn(ind_recon, target)
+        loss = recon_error # + vq_loss
+
+        if trainable:
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
+        
+        return loss.item(), result, ind_recon, perplexity.detach()
+
+    def infer_vae_completion(self, data, batch_size, loss_fn='ce', trainable=False):
+        bev_seq = data['bev_seq']
+        trans_matrices = data['trans_matrices']
+        num_agent = data['num_agent']
+
+        vq_loss, result, ind_recon = self.model(bev_seq, trans_matrices, num_agent, batch_size=batch_size)
+
+        return result
+
+    # Used by VQ STAR model in scene completion, added by Juexiao
+    def step_vqstar_completion(self, data, batch_size, mask_ratio, loss_fn='mse', trainable = False):
+        # figure out the dimensions: squeeze, permute etc
+        bev_seq = data['bev_seq'].squeeze(1).permute(0,3,1,2)
+        bev_seq_next = data['bev_seq_next'] # [bxa, ts-1, H, W, C]
+        if bev_seq_next.dim()>2:
+            bev_seq_next = bev_seq_next.permute(0,1,4,2,3) # [bxa, ts-1, C, H, W]
+        # print(data['bev_seq_teacher'].size())
+        bev_teacher = data['bev_seq_teacher'].squeeze(1).permute(0,3,1,2)
+        # print("teacher size", bev_teacher.size())
+        num_agent_tensor = data['num_agent']
+        trans_matrices = data['trans_matrices']
+        
+        with torch.cuda.amp.autocast(enabled=False):
+            loss, result, _, ind_pred, perplexity = self.model(bev_seq, 
+                                                    bev_seq_next, 
+                                                    bev_teacher, 
+                                                    trans_matrices, 
+                                                    num_agent_tensor,
+                                                    batch_size,
+                                                    mask_ratio=mask_ratio)
+        # print("result size", result.size())
+        # exit(1)
+        
+        loss_value = loss.item()
+
+        if not math.isfinite(loss_value):
+            print("Loss is {}, stopping training".format(loss_value))
+            sys.exit(1)
+
+        if trainable:
+            self.mae_loss_scaler(loss, self.optimizer, parameters=self.model.parameters(),
+                        update_grad=True)
+            self.optimizer.zero_grad()
+            # loss.backward()
+            # self.optimizer.step()
+
+        return loss_value, result, ind_pred.detach(), perplexity.detach()
+
+    def infer_vqstar_completion(self, data, batch_size, mask_ratio, loss_fn='mse'):
+        # figure out the dimensions: squeeze, permute etc
+        bev_seq = data['bev_seq'].squeeze(1).permute(0,3,1,2)
+        bev_seq_next = data['bev_seq_next'] # [bxa, ts-1, H, W, C]
+        if bev_seq_next.dim()>2:
+            bev_seq_next = bev_seq_next.permute(0,1,4,2,3) # [bxa, ts-1, C, H, W]
+        # print(data['bev_seq_teacher'].size())
+        bev_teacher = data['bev_seq_teacher'].squeeze(1).permute(0,3,1,2)
+        # print("teacher size", bev_teacher.size())
+        num_agent_tensor = data['num_agent']
+        trans_matrices = data['trans_matrices']
+        
+        with torch.cuda.amp.autocast(enabled=False):
+            loss, result, _, ind_pred, perplexity = self.model.inference(bev_seq, 
+                                                    bev_seq_next, 
+                                                    bev_teacher, 
+                                                    trans_matrices, 
+                                                    num_agent_tensor,
+                                                    batch_size,
+                                                    mask_ratio=mask_ratio)
+        
+        loss_value = loss.item()
+        return loss_value, result, ind_pred.detach(), perplexity.detach()
+
     def get_kd_loss(self, batch_size, data, fused_layer, num_agent, x_5, x_6, x_7):
         if self.kd_flag:
             bev_seq_teacher = data["bev_seq_teacher"]

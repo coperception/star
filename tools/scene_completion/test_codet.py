@@ -22,6 +22,7 @@ from coperception.utils.data_util import apply_pose_noise
 import glob
 
 from coperception.models.transformers import multiagent_mae
+from coperception.models.generatives import VQVAENet
 import timm
 assert timm.__version__ == "0.3.2"  # version check
 import timm.optim.optim_factory as optim_factory
@@ -59,7 +60,7 @@ def main(args):
                 flag = "who2com"
             if args.warp_flag:
                 flag = flag + "_warp"
-        elif args.com in {"v2v", "disco", "sum", "mean", "max", "cat", "agent", "ind_mae", "joint_mae"}:
+        elif args.com in {"v2v", "disco", "sum", "mean", "max", "cat", "agent", "ind_mae", "joint_mae", "late", "vqvae"}:
             flag = args.com
         else:
             flag = "lowerbound"
@@ -134,17 +135,35 @@ def main(args):
         )
     elif args.com == "joint_mae" or  args.com == "ind_mae":
         # Juexiao added for mae
-        model_completion = multiagent_mae.__dict__[args.mae_model](norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask)
+        model_completion = multiagent_mae.__dict__[args.mae_model](norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask, encode_partial=args.encode_partial)
         # also include individual reconstruction: reconstruct then aggregate
+    elif args.com == "late":
+        model_completion = FaFNet(
+            config,
+            layer=args.layer,
+            kd_flag=args.kd_flag,
+            num_agent=num_agent,
+            train_completion=True,
+        )
+    elif args.com == "vqvae":
+        model_completion = VQVAENet(
+            num_hiddens = 256,
+            num_residual_hiddens = 32,
+            num_residual_layers = 2,
+            num_embeddings = 512,
+            embedding_dim = 64,
+            commitment_cost = 0.25,
+            decay = 0., # for VQ
+        )
     else:
         raise NotImplementedError("Fusion type: {args.com} not implemented")
 
     
     model = FaFNet(
-        config, layer=args.layer, kd_flag=args.kd_flag, num_agent=num_agent
+        config, layer=args.layer, kd_flag=args.kd_flag, num_agent=num_agent, train_completion=False,
     )
     
-
+    # model_completion = nn.DataParallel(model_completion)
     model = nn.DataParallel(model)
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
@@ -175,7 +194,8 @@ def main(args):
     faf_module_completion.resume_from_cpu(checkpoint=checkpoint_completion, device=device, trainable=False)
     print("completion model loaded from {} at epoch {}".format(args.resume_completion, completion_start_epoch-1))
 
-    model_save_path = args.resume[: args.resume.rfind("/")]
+    # model_save_path = args.resume[: args.resume.rfind("/")]
+    model_save_path = os.path.join(args.logpath, "agnostic-det")
 
     if args.inference == "argmax_test":
         model_save_path = model_save_path.replace("when2com", "who2com")
@@ -204,7 +224,8 @@ def main(args):
     #  ===== eval =====
     fafmodule.model.eval()
     faf_module_completion.model.eval()
-    eval_save_path = check_folder(os.path.join(model_save_path, flag))
+    # eval_save_path = check_folder(os.path.join(model_save_path, flag))
+    eval_save_path = check_folder(model_save_path)
     print("save evalutaion results at", eval_save_path)
     save_fig_path = [
         check_folder(os.path.join(eval_save_path, f"vis{i}")) for i in agent_idx_range
@@ -287,6 +308,8 @@ def main(args):
                 data["bev_seq_next"] = torch.cat(tuple(padded_voxel_point_next_list), 0).to(device)
                 # loss, reconstruction, _ = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=False)
                 loss, completed_point_cloud, _ = faf_module_completion.infer_mae_completion(data, batch_size=1, mask_ratio=args.mask_ratio)
+            elif args.com == "vqvae":
+                _, completed_point_cloud, _ = faf_module_completion.step_vae_completion(data, batch_size=1, trainable=False)
             else:
                 _, completed_point_cloud = faf_module_completion.step_completion(
                     data, batch_size=1, trainable=False
@@ -297,6 +320,7 @@ def main(args):
 
             # substitute with the completed data
             data["bev_seq"] = completed_point_cloud
+            # print("check lowerbound")
             if args.visualization:
                 # visualize completion and ground truth (teacher)
                 reconstructed = data["bev_seq"].squeeze(1).permute(0,3,1,2)
@@ -306,16 +330,25 @@ def main(args):
                 filename = str(filename0[0][0])
                 eval_start_idx = 0 if args.no_cross_road else 1
                 # local qualitative evaluation
-                # for kid in range(eval_start_idx, num_agent):
-                #     cut = filename[filename.rfind("agent") + 7 :]
-                #     seq_name = cut[: cut.rfind("_")]
-                #     idx = cut[cut.rfind("_") + 1 : cut.rfind("/")]
-                #     seq_save = os.path.join(save_fig_path[kid], seq_name)
-                #     check_folder(seq_save)
-                #     recon_save = str(idx) + "recon.png"
-                #     target_save = str(idx) + "target.png"
-                #     imshow(target_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12)
-                #     imshow(recon_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12)
+                for kid in range(eval_start_idx, num_agent):
+                    recon_name = "recon-epc{}-agent{}.png".format(completion_start_epoch-1, kid)
+                    target_name = "target-epc{}-agent{}.png".format(completion_start_epoch-1, kid)
+                    cut = filename[filename.rfind("agent") + 7 :]
+                    seq_name = cut[: cut.rfind("_")]
+                    idx = cut[cut.rfind("_") + 1 : cut.rfind("/")]
+                    seq_save = os.path.join(save_fig_path[kid], seq_name)
+                    check_folder(seq_save)
+                    recon_save = str(idx) + recon_name
+                    target_save = str(idx) + target_name
+                    plt.imshow(target_img[kid,:,:,:].permute(1,2,0).squeeze(-1).cpu().numpy(), alpha=1.0, zorder=12, cmap="Purples")
+                    plt.axis('off')
+                    print("save", os.path.join(seq_save, target_save))
+                    plt.savefig(os.path.join(seq_save, target_save))
+                    plt.imshow(recon_img[kid,:,:,:].permute(1,2,0).squeeze(-1).cpu().numpy(), alpha=1.0, zorder=12, cmap="Purples")
+                    plt.axis('off')
+                    plt.savefig(os.path.join(seq_save, recon_save))
+                    # imshow(target_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12)
+                    # imshow(recon_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12)
 
 
         if flag == "lowerbound_box_com":
@@ -349,7 +382,8 @@ def main(args):
                 selected_idx_restore = result[k][0][0][0]["selected_idx"]
 
             data_agents = {
-                "bev_seq": torch.unsqueeze(padded_voxel_points[k, :, :, :, :], 1),
+                # "bev_seq": torch.unsqueeze(padded_voxel_points[k, :, :, :, :], 1), #NOTE: what is this for? only visualization, not involved in mAP calc
+                "bev_seq": torch.unsqueeze(padded_voxel_points_teacher[k, :, :, :, :], 1),
                 "reg_targets": torch.unsqueeze(reg_target[k, :, :, :, :, :], 0),
                 "anchors": torch.unsqueeze(anchors_map[k, :, :, :, :], 0),
             }
@@ -369,7 +403,7 @@ def main(args):
             result_temp = result[k]
 
             temp = {
-                "bev_seq": data_agents["bev_seq"][0, -1].cpu().numpy(),
+                "bev_seq": data_agents["bev_seq"][0, -1].cpu().numpy(), 
                 "result": [] if len(result_temp) == 0 else result_temp[0][0],
                 "reg_targets": data_agents["reg_targets"].cpu().numpy()[0],
                 "anchors_map": data_agents["anchors"].cpu().numpy()[0],
@@ -527,6 +561,11 @@ def main(args):
             args.resume, start_epoch - 1
         )
     )
+    print_and_write_log(
+        "Quantitative evaluation results of completion model from {}".format(
+            args.resume_completion,
+        )
+    )
 
     for k in range(eval_start_idx, num_agent):
         print_and_write_log(
@@ -642,12 +681,6 @@ if __name__ == "__main__":
 
     ## ----- args for completion model load ----
     parser.add_argument(
-        "--auto_resume_path",
-        default="",
-        type=str,
-        help="The path to automatically reload the latest pth",
-    )
-    parser.add_argument(
         "--resume_completion",
         default="",
         type=str,
@@ -672,6 +705,9 @@ if __name__ == "__main__":
         "--norm_pix_loss", default=False, type=bool, help="Whether normalize target pixel value for loss"
     )
     ## ----------------------
+    parser.add_argument(
+        "--encode_partial", action="store_true", help="encode partial information before masking"
+    )
 
     torch.multiprocessing.set_sharing_strategy("file_system")
     args = parser.parse_args()

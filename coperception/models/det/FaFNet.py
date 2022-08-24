@@ -27,6 +27,7 @@ class FaFNet(NonIntermediateModelBase):
         train_completion=True,
     ):
         super().__init__(config, layer, in_channels, kd_flag, num_agent, compress_level, train_completion)
+        self.train_completion = train_completion
 
     def get_feature_maps_size(self, feature_maps: tuple):
         size = list(feature_maps.shape)
@@ -147,12 +148,19 @@ class FaFNet(NonIntermediateModelBase):
         x = x_8
 
         # cls_preds, loc_preds, result = super().get_cls_loc_result(x)
-        # fuse reconstructed BEVs
-        ind_result = torch.argmax(torch.softmax(x, dim=1), dim=1)
-        result = self.ego_late_fusion(ind_result, bevs.squeeze(1), trans_matrices, num_agent_tensor, batch_size)
+        
+        if self.train_completion:
+            # fuse reconstructed BEVs
+            ind_result = torch.argmax(torch.softmax(x, dim=1), dim=1)
+            result = self.ego_late_fusion(ind_result, bevs.squeeze(1), trans_matrices, num_agent_tensor, batch_size)
+        else:
+            # do detection
+            cls_preds, loc_preds, result = super().get_cls_loc_result(x)
 
 
         if self.kd_flag == 1:
             return result, x_8, x_7, x_6, x_5, x_3
-        else:
+        elif self.train_completion:
             return result, x_8
+        else:
+            return result

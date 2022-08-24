@@ -20,6 +20,7 @@ from torch.utils.data import DataLoader
 from coperception.utils.data_util import apply_pose_noise
 
 from coperception.models.transformers import multiagent_mae
+from coperception.models.generatives import VQVAENet
 from coperception.models.det import *
 import timm
 assert timm.__version__ == "0.3.2"  # version check
@@ -72,6 +73,10 @@ def main(config, args):
             flag = "disco"
         elif args.com == "ind_mae" or args.com == "joint_mae":
             flag = "mae"    
+        elif args.com == "late":
+            flag = "late"
+        elif args.com == "vqvae":
+            flag = "vqvae"
         else:
             flag = "lowerbound"
 
@@ -147,6 +152,23 @@ def main(config, args):
         # Juexiao added for mae
         model_completion = multiagent_mae.__dict__[args.mae_model](norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask)
         # also include individual reconstruction: reconstruct then aggregate
+    elif args.com == "vqvae":
+        model_completion = VQVAENet(
+            num_hiddens = 256,
+            num_residual_hiddens = 32,
+            num_residual_layers = 2,
+            num_embeddings = 512,
+            embedding_dim = 64,
+            commitment_cost = 0.25,
+            decay = 0., # for VQ
+        )
+    elif args.com == "late":
+        model_completion = FaFNet(
+            config,
+            kd_flag=0,
+            num_agent=num_agent,
+            train_completion=True,
+        )
     else:
         raise NotImplementedError("Fusion type: {args.com} not implemented")
 
@@ -223,31 +245,50 @@ def main(config, args):
         # print(padded_voxel_points_next.size())
         if padded_voxel_points_next.size(1) >0:
             padded_voxel_points_next = padded_voxel_points_next.permute(0, 1, 4, 2, 3)
-        
-        completion_data = {
-            'bev_seq': padded_voxel_points.squeeze(1).permute(0,3,1,2).to(device).float(),
-            'bev_seq_next': padded_voxel_points_next.to(device).float(),
+
+        data = {
             'bev_teacher': padded_voxel_points_teacher.squeeze(1).permute(0,3,1,2).to(device),
-            'num_agent_tensor': num_all_agents.to(device),
-            'trans_matrices': trans_matrices,
         }
-        _, completed_point_cloud, _, _ = model_completion.inference(completion_data['bev_seq'], 
-                                                    completion_data['bev_seq_next'], 
-                                                    completion_data['bev_teacher'], 
-                                                    completion_data['trans_matrices'], 
-                                                    completion_data['num_agent_tensor'],
-                                                    batch_size,
-                                                    mask_ratio=args.mask_ratio)
+        
+        if flag != "upperbound":
+            completion_data = {
+                'bev_seq': padded_voxel_points.squeeze(1).permute(0,3,1,2).to(device).float(),
+                'bev_seq_next': padded_voxel_points_next.to(device).float(),
+                'bev_teacher': padded_voxel_points_teacher.squeeze(1).permute(0,3,1,2).to(device),
+                'num_agent_tensor': num_all_agents.to(device),
+                'trans_matrices': trans_matrices,
+            }
+            if args.com == "joint_mae" or  args.com == "ind_mae":
+                _, completed_point_cloud, _, _ = model_completion.inference(completion_data['bev_seq'], 
+                                                            completion_data['bev_seq_next'], 
+                                                            completion_data['bev_teacher'], 
+                                                            completion_data['trans_matrices'], 
+                                                            completion_data['num_agent_tensor'],
+                                                            batch_size,
+                                                            mask_ratio=args.mask_ratio)
+            elif args.com == "vqvae":
+                _, completed_point_cloud, _ = model_completion(padded_voxel_points.unsqueeze(1).to(device).float(), 
+                                                completion_data['trans_matrices'], 
+                                                completion_data['num_agent_tensor'],
+                                                batch_size=batch_size)
+            else:
+                # print(padded_voxel_points.size())
+                completed_point_cloud, _ = model_completion(padded_voxel_points.unsqueeze(1).to(device).float(), 
+                                                completion_data['trans_matrices'], 
+                                                completion_data['num_agent_tensor'],
+                                                batch_size=batch_size)
 
-        completed_point_cloud = completed_point_cloud.permute(0, 2, 3, 1)
-        torch.save(completion_data['bev_seq'], "seg_bev.pt")
-        torch.save(completion_data['bev_teacher'], "seg_bev_teacher.pt")
-        torch.save(completed_point_cloud, "seg_recon.pt")
-        exit(1)
+            completed_point_cloud = completed_point_cloud.permute(0, 2, 3, 1)
+            # torch.save(completion_data['bev_seq'], "seg_bev.pt")
+            # torch.save(completion_data['bev_teacher'], "seg_bev_teacher.pt")
+            # torch.save(completed_point_cloud, "seg_recon.pt")
+            # exit(1)
+            data["bev_seq"] = completed_point_cloud.to(device)
+        else:
+            print("test on the upperbound")
+            data["bev_seq"] = padded_voxel_points.to(device).float()
 
-
-        data = {}
-        data["bev_seq"] = completed_point_cloud.to(device)
+        # print("test on the lower bound")
         # data["bev_seq"] = padded_voxel_points.to(device).float()
         data["labels"] = label_one_hot.to(device)
         if args.com:
@@ -307,6 +348,7 @@ def main(config, args):
         # ============
 
         pred = torch.argmax(F.softmax(pred, dim=1), dim=1)
+        # print('pred size', pred.size())
         compute_iou(pred, labels)
 
         if args.vis and idx % 50 == 0:  # render segmatic map
@@ -326,6 +368,27 @@ def main(config, args):
             )
             cv2.imwrite(f"{logpath}/{idx}_pred.png", pred_map[:, :, ::-1])
             cv2.imwrite(f"{logpath}/{idx}_gt.png", gt_map[:, :, ::-1])
+
+            # save completion results also
+            if idx==0 or idx==150 or idx==200 or idx == 500 or idx == 600 or idx==700:
+                print("save tensor for idx", idx)
+                torch.save(data['bev_teacher'].cpu(), os.path.join(logpath, "{}-target.pt").format(idx))
+                torch.save(data['bev_seq'].permute(0,3,1,2).cpu(), os.path.join(logpath, "{}-recon.pt").format(idx))
+
+            # target_img = torch.max(data['bev_teacher'].cpu(), dim=1, keepdim=True)[0]
+            # recon_img = torch.max(data['bev_seq'].permute(0,3,1,2).cpu(), dim=1, keepdim=True)[0]
+            # start_agent_idx = 0 if args.no_cross_road else 1
+            # for kid in range(start_agent_idx, num_agent):
+            #     recon_save = "{}_reconstruction-epc{}-agent{}.png".format(idx, completion_start_epoch-1, kid)
+            #     target_save = "{}_target-epc{}-agent{}.png".format(idx, completion_start_epoch-1, kid)
+            #     plt.imshow(target_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12, cmap="Purples")
+            #     plt.axis('off')
+            #     plt.savefig(os.path.join(logpath, target_save))
+            #     plt.imshow(recon_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12, cmap="Purples")
+            #     plt.axis('off')
+            #     plt.savefig(os.path.join(logpath, recon_save))
+
+
 
     print("iou:", compute_iou.get_ious())
     print("miou:", compute_iou.get_miou(ignore=0))
@@ -388,13 +451,6 @@ if __name__ == "__main__":
         default=0,
         type=int,
         help="1: only v2i, 0: v2v and v2i",
-    )
-
-    parser.add_argument(
-        "--auto_resume_path",
-        default="",
-        type=str,
-        help="The path to automatically reload the latest pth",
     )
 
     ## ----- mae args added by Juexiao -----

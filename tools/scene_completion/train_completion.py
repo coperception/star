@@ -1,4 +1,6 @@
 import argparse
+import matplotlib
+matplotlib.use('Agg')
 from multiprocessing.connection import deliver_challenge
 import os
 import glob
@@ -14,9 +16,10 @@ from coperception.utils.CoDetModule import *
 from coperception.utils.loss import *
 from coperception.models.det import *
 from coperception.models.transformers import multiagent_mae
+from coperception.models.transformers import VQSTAR
+from coperception.models.generatives import VQVAENet
 from coperception.utils import AverageMeter
-import matplotlib
-matplotlib.use('Agg')
+
 
 # from mae script -----------
 import timm
@@ -57,7 +60,7 @@ def main(args):
     device_num = torch.cuda.device_count()
     print("device number", device_num)
 
-    if args.com in {"mean", "max", "cat", "sum", "v2v", "ind_mae", "joint_mae", "late"}:
+    if args.com in {"mean", "max", "cat", "sum", "v2v", "ind_mae", "joint_mae", "late", "vqvae", "vqstar"}:
         flag = args.com
     else:
         raise ValueError(f"com: {args.com} is not supported")
@@ -132,6 +135,12 @@ def main(args):
         model = multiagent_mae.__dict__[args.mae_model](norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask,
                                                         encode_partial=args.encode_partial, no_temp_emb=args.no_temp_emb, decode_singletemp=args.decode_singletemp)
         # also include individual reconstruction: reconstruct then aggregate
+    elif args.com == "vqstar":
+        model = VQSTAR.vqstar(
+            norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask,
+            decay=args.decay, commitment_cost=args.commitment_cost, 
+            num_vq_embeddings=args.num_vq_embeddings, vq_embedding_dim=args.vq_embedding_dim
+            )
     elif args.com == "late":
         model = FaFNet(
             config,
@@ -139,6 +148,16 @@ def main(args):
             kd_flag=args.kd_flag,
             num_agent=num_agent,
             train_completion=True,
+        )
+    elif args.com == "vqvae":
+        model = VQVAENet(
+            num_hiddens = 256,
+            num_residual_hiddens = 32,
+            num_residual_layers = 2,
+            num_embeddings = 512,
+            embedding_dim = 64,
+            commitment_cost = 0.25,
+            decay = 0., # for VQ
         )
     else:
         raise NotImplementedError("Invalid argument com:" + args.com)
@@ -223,6 +242,13 @@ def main(args):
             saver.write(args.__repr__() + "\n\n")
             saver.flush() 
 
+    # # calculate the stats:
+    # trainset_num_nonzeros = []
+    if args.wandb:
+        print("visualize using wandb")
+        import wandb
+        wandb.init(project="mae_bev_train", name="coperception+"+str(args.com)+"+dim"+str(args.num_vq_embeddings))
+        wandb.config.update(args)
     
     for epoch in range(start_epoch, num_epochs + 1):
         lr = faf_module.optimizer.param_groups[0]["lr"]
@@ -243,11 +269,7 @@ def main(args):
         faf_module.model.train()
 
         # test overfit
-        if args.wandb:
-            print("visualize using wandb")
-            import wandb
-            wandb.init(project="mae_bev_train", name="coperception-debug")
-            wandb.config.update(args)
+        
         # sample = next(iter(training_data_loader))
         # t = tqdm(range(100))
         # for data_iter_step, ti in enumerate(t):
@@ -300,12 +322,27 @@ def main(args):
             )
             data["bev_seq_teacher"] = padded_voxel_points_teacher.to(device)
 
+            # # calculate stats:
+            # for i in range(padded_voxel_points_teacher.size(0)):
+            #     num_nonzero = (padded_voxel_points_teacher[i]>0.0).sum()
+            #     if num_nonzero == 0:
+            #         continue
+            #     else:
+            #         trainset_num_nonzeros.append(num_nonzero)
+
             if args.com == "ind_mae" or args.com == "joint_mae":
                 # multi timestamp input bev supported in the data
                 data["bev_seq_next"] = torch.cat(tuple(padded_voxel_point_next_list), 0).to(device)
                 # adjust learning rate for mae
                 lr_sched.adjust_learning_rate(faf_module.optimizer, data_iter_step / len(training_data_loader) + epoch, args)
                 loss, reconstruction, _ = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=True)
+            elif args.com == "vqstar":
+                data["bev_seq_next"] = torch.cat(tuple(padded_voxel_point_next_list), 0).to(device)
+                # adjust learning rate for mae
+                lr_sched.adjust_learning_rate(faf_module.optimizer, data_iter_step / len(training_data_loader) + epoch, args)
+                loss, reconstruction, _, perplexity = faf_module.step_vqstar_completion(data, batch_size, args.mask_ratio, trainable=True)
+            elif args.com == "vqvae":
+                loss, _, _, perplexity = faf_module.step_vae_completion(data, batch_size, trainable=True)
             else:
                 loss, _ = faf_module.step_completion(data, batch_size, trainable=True)
             running_loss_disp.update(loss)
@@ -315,12 +352,17 @@ def main(args):
             
             ## if visualize
             if args.wandb and data_iter_step%200 ==0:
-                teacher_bev = torch.max(padded_voxel_points_teacher.squeeze(1).permute(0,3,1,2), dim=1, keepdim=True)[0]
-                pred_bev = torch.max(reconstruction, dim=1, keepdim=True)[0]
-                teacher_img = wandb.Image(plt.imshow(teacher_bev[0,:,:,:].detach().cpu().permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12))
-                pred_img = wandb.Image(plt.imshow(pred_bev[0,:,:,:].detach().cpu().permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12)) 
-                wandb.log({"overfit visualization": [teacher_img, pred_img]})
+                # teacher_bev = torch.max(padded_voxel_points_teacher.squeeze(1).permute(0,3,1,2), dim=1, keepdim=True)[0]
+                # pred_bev = torch.max(reconstruction, dim=1, keepdim=True)[0]
+                # teacher_img = wandb.Image(plt.imshow(teacher_bev[0,:,:,:].detach().cpu().permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12))
+                # pred_img = wandb.Image(plt.imshow(pred_bev[0,:,:,:].detach().cpu().permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12)) 
+                # wandb.log({"overfit visualization": [teacher_img, pred_img]})
+                wandb.log({"imme loss": loss})
                 wandb.log({"runnning loss": running_loss_disp.avg})
+                wandb.log({"lr": curr_lr})
+                if args.com == "vqvae" or args.com == "vqstar":
+                    wandb.log({"perplexity": perplexity})
+
                 
 
         if (args.com != "ind_mae" and args.com != "joint_mae"):
@@ -363,7 +405,10 @@ def main(args):
 
     if need_log:
         saver.close()
-
+    
+    # trainset_num_nonzeros = torch.tensor(trainset_num_nonzeros)
+    # torch.save(trainset_num_nonzeros, "testset_num_nonzeros.pt")
+    # print("number of test set", trainset_num_nonzeros.size(), "average number of nonzeros over the test set", trainset_num_nonzeros.type(torch.FloatTensor).mean())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -449,6 +494,20 @@ if __name__ == "__main__":
         default="",
         type=str,
         help="The path to automatically reload the latest pth",
+    )
+
+    ## args for vector quantization
+    parser.add_argument(
+        "--decay", default=0., type=float, help="used in vector quantization"
+    )
+    parser.add_argument(
+        "--commitment_cost", default=0.25, type=float, help="Used in vector quantization"
+    )
+    parser.add_argument(
+        "--num_vq_embeddings", default=512, type=int, help="Used in vector quantization"
+    )
+    parser.add_argument(
+        "--vq_embedding_dim", default=64, type=int, help="Used in vector quantization"
     )
 
     ## agrs for ablation study:

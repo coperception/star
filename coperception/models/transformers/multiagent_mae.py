@@ -30,6 +30,8 @@ from coperception.models.transformers.mae_base import *
 from coperception.utils.maeutil.pos_embed import get_2d_sincos_pos_embed
 import math
 
+from coperception.utils.softmax_focal_loss import SoftmaxFocalLoss
+
 
 class FusionMultiAgentMAEViT(MultiAgentMaskedAutoencoderViT):
     """
@@ -719,7 +721,11 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         # for neighbor agents' features
         self.patch_h = 0
         self.patch_w = 0
+        # class_weights = torch.FloatTensor([1.0, 20.0]) # [free, occ]
+        # print("Using weighted cross entropy loss with weights", class_weights)
+        # self.cls_loss = nn.CrossEntropyLoss(weight = class_weights)
         self.cls_loss = nn.CrossEntropyLoss()
+        # self.focal_loss = SoftmaxFocalLoss(alpha=0.75, gamma=3)
         
         if mask_method == "random":
             print("do random masking")
@@ -775,6 +781,7 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
 
         # ---- ablation: use time emb -----
         if not self.no_temp_emb:
+            # print("use temporal embedding")
             x_ts_ = x_ts_ + self.decoder_temp_embed #check dim
         # ----------------------------------
 
@@ -789,6 +796,7 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         x_curr = x_ts_unp[:,0,:,:,:] #[BxA, h, w, D]
         # print("x_curr size", x_curr.size())
         if self.decode_singletemp:
+            print("decode single time stamp")
             x_curr = x_curr.permute(0,3,1,2)
             return x_curr
         else:
@@ -851,8 +859,10 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         BA = BAT // self.time_stamp
         x_ts_ = x_ts_.reshape(BA, self.time_stamp, L, D)
         if not self.no_temp_emb:
+            # print("use temporal embedding")
             x_ts_ = x_ts_ + self.decoder_temp_embed #check dim
         if self.decode_singletemp:
+            # print("decode single timestamp")
             x_curr = x_ts_[:,0, :realL, :] # [BA, realL, D]
             mask_tokens = self.mask_token.repeat(x_curr.shape[0], ids_restore.shape[1] + 1 - x_curr.shape[1], 1)
             x_curr = torch.cat([x_curr, mask_tokens], dim=1)  # no cls token
@@ -1080,6 +1090,9 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         loss = self.cls_loss(pred, target)
         return loss
 
+    def forward_focal_loss(self, target, pred):
+        return self.focal_loss(pred, target)
+
     def forward(self, imgs1, imgs_next, teacher, trans_matrices, num_agent_tensor, batch_size, mask_ratio=0.75):
         """
         Encoder encodes each timestamp alone
@@ -1093,6 +1106,7 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         pred = self.forward_decoder(latent, mask, ids_restore)
         # loss = self.forward_loss(imgs1, pred)
         loss = self.forward_bce_loss(imgs1, pred)
+        # loss = self.forward_focal_loss(imgs1, pred)
         # result = self.unpatchify(pred)
         ind_result = torch.argmax(torch.softmax(pred, dim=1), dim=1)
         result = self.late_fusion(ind_result, trans_matrices, num_agent_tensor, batch_size)
@@ -1113,6 +1127,7 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         pred = self.forward_decoder(latent, mask, ids_restore)
         # loss = self.forward_loss(imgs1, pred)
         loss = self.forward_bce_loss(imgs1, pred)
+        # loss = self.forward_focal_loss(imgs1, pred)
         # print(imgs1.size(), imgs1.type())
         ind_result = torch.argmax(torch.softmax(pred, dim=1), dim=1)
         result = self.ego_late_fusion(ind_result, imgs1, trans_matrices, num_agent_tensor, batch_size)
@@ -1123,10 +1138,31 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
 
 
 
-def amo_individual_bev_multi_mae_vit_base_patch8_dec512d6b(**kwargs):
+def amo_individual_bev_multi_mae_vit_base_patch8_dec512d4b(**kwargs):
     model = AmortizedIndivMMAEViT(
         img_size=256, patch_size=8, in_chans=13, embed_dim=768, depth=6, num_heads=12,
-        decoder_embed_dim=512, decoder_depth=6, decoder_num_heads=16,
+        decoder_embed_dim=512, decoder_depth=4, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="mlp", **kwargs)
+    return model
+
+def amo_individual_bev_multi_mae_vit_base_patch8_dec256d4b(**kwargs):
+    model = AmortizedIndivMMAEViT(
+        img_size=256, patch_size=8, in_chans=13, embed_dim=384, depth=6, num_heads=12,
+        decoder_embed_dim=256, decoder_depth=4, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="mlp", **kwargs)
+    return model
+
+def amo_individual_bev_multi_mae_vit_base_patch16_dec256d4b(**kwargs):
+    model = AmortizedIndivMMAEViT(
+        img_size=256, patch_size=16, in_chans=13, embed_dim=384, depth=6, num_heads=12,
+        decoder_embed_dim=256, decoder_depth=4, decoder_num_heads=16,
+        mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="mlp", **kwargs)
+    return model
+
+def amo_individual_bev_multi_mae_vit_base_patch32_dec256d4b(**kwargs):
+    model = AmortizedIndivMMAEViT(
+        img_size=256, patch_size=32, in_chans=13, embed_dim=384, depth=6, num_heads=12,
+        decoder_embed_dim=256, decoder_depth=4, decoder_num_heads=16,
         mlp_ratio=4, norm_layer=partial(nn.LayerNorm, eps=1e-6), decoder_head="mlp", **kwargs)
     return model
 
@@ -1250,7 +1286,8 @@ joint_bev_mae_vit_base_patch16_dec1024 = fusion_bev_multi_mae_vit_base_patch16_d
 ind_bev_mae_vit_base_patch8 = individual_bev_multi_mae_vit_base_patch8_dec512d8b
 # temporal amortized reconstruction
 amortized_ind_patch8 = amo_individual_bev_multi_mae_vit_base_patch8_dec512d8b
-amortized_ind_patch8_shallow = amo_individual_bev_multi_mae_vit_base_patch8_dec512d6b
+amortized_ind_patch8_shallow = amo_individual_bev_multi_mae_vit_base_patch8_dec512d4b
+amortized_ind_patch8_light = amo_individual_bev_multi_mae_vit_base_patch8_dec256d4b
 amortized_ind_patch16 = amo_individual_bev_multi_mae_vit_base_patch16_dec512d8b
 amortized_ind_patch32 = amo_individual_bev_multi_mae_vit_base_patch32_dec512d8b
 amortized_ind_patch4 = amo_individual_bev_multi_mae_vit_base_patch4_dec512d8b
@@ -1258,3 +1295,5 @@ amortized_joint_patch8_shallow = amo_fusion_bev_multi_mae_vit_base_patch8_dec512
 amortized_joint_patch16_shallow = amo_fusion_bev_multi_mae_vit_base_patch16_dec512d6b
 amortized_joint_patch8 = amo_fusion_bev_multi_mae_vit_base_patch8_dec512d8b
 amortized_joint_patch16 = amo_fusion_bev_multi_mae_vit_base_patch8_dec512d8b
+amortized_ind_patch16_light = amo_individual_bev_multi_mae_vit_base_patch16_dec256d4b
+amortized_ind_patch32_light = amo_individual_bev_multi_mae_vit_base_patch32_dec256d4b

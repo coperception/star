@@ -18,6 +18,8 @@ from coperception.utils.CoDetModule import *
 from coperception.utils.loss import *
 from coperception.models.det import *
 from coperception.models.transformers import multiagent_mae
+from coperception.models.transformers import VQSTAR
+from coperception.models.generatives import VQVAENet
 from coperception.utils import AverageMeter
 
 # from mae script -----------
@@ -60,7 +62,7 @@ def main(args):
     device_num = torch.cuda.device_count()
     print("device number", device_num)
 
-    if args.com in {"mean", "max", "cat", "sum", "v2v", "ind_mae", "joint_mae", "late"}:
+    if args.com in {"mean", "max", "cat", "sum", "v2v", "ind_mae", "joint_mae", "late", "vqvae", "vqstar"}:
         flag = args.com
     else:
         raise ValueError(f"com: {args.com} is not supported")
@@ -134,6 +136,12 @@ def main(args):
         # Juexiao added for mae
         model = multiagent_mae.__dict__[args.mae_model](norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask)
         # also include individual reconstruction: reconstruct then aggregate
+    elif args.com == "vqstar":
+        model = VQSTAR.vqstar(
+            norm_pix_loss=args.norm_pix_loss, time_stamp=args.time_stamp, mask_method=args.mask,
+            decay=args.decay, commitment_cost=args.commitment_cost, 
+            num_vq_embeddings=args.num_vq_embeddings, vq_embedding_dim=args.vq_embedding_dim
+            )
     elif args.com == "late":
         model = FaFNet(
             config,
@@ -141,6 +149,16 @@ def main(args):
             kd_flag=args.kd_flag,
             num_agent=num_agent,
             train_completion=True,
+        )
+    elif args.com == "vqvae":
+        model = VQVAENet(
+            num_hiddens = 256,
+            num_residual_hiddens = 32,
+            num_residual_layers = 2,
+            num_embeddings = 512,
+            embedding_dim = 64,
+            commitment_cost = 0.25,
+            decay = 0., # for VQ
         )
     else:
         raise NotImplementedError("Invalid argument com:" + args.com)
@@ -240,6 +258,14 @@ def main(args):
             with torch.no_grad():
                 # loss, reconstruction, ind_rec = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=False)
                 loss, reconstruction, ind_rec = faf_module.infer_mae_completion(data, batch_size, args.mask_ratio)
+        elif args.com == "vqstar":
+            data["bev_seq_next"] = torch.cat(tuple(padded_voxel_point_next_list), 0).to(device)
+            with torch.no_grad():
+                loss, reconstruction, ind_rec, perplexity = faf_module.step_vqstar_completion(data, batch_size, args.mask_ratio, trainable=False)
+        elif args.com == "vqvae":
+            with torch.no_grad():
+                loss, reconstruction, ind_rec, perplexity = faf_module.step_vae_completion(data, batch_size, trainable=False)
+                ind_rec = torch.argmax(torch.softmax(ind_rec, dim=1), dim=1)
         else:
             with torch.no_grad():
                 loss, reconstruction = faf_module.step_completion(data, batch_size, trainable=False)
@@ -247,6 +273,7 @@ def main(args):
         # print(reconstruction.size()) # [B, C, H, W]
         # ind_rec = ind_rec
         # print(ind_rec.size())
+        # print(perplexity.item())
         # exit(1)
         # reconstruction = reconstruction.permute(0,2,1,3) # [B, H, C, W]
         # print(reconstruction.size())
@@ -260,8 +287,9 @@ def main(args):
         # IoUEvaluator.add_batch(ind_rec, bev_seq)
         IoUEvaluator.update_IoU()
         # print(IoUEvaluator.every_batch_IoU)
-        if args.save_vis:
-            print(IoUEvaluator.every_batch_IoU)
+        # save every 100
+        if args.save_vis and data_iter_step%100==0:
+            print(IoUEvaluator.every_batch_IoU[-1])
             target_img = torch.max(target.cpu(), dim=1, keepdim=True)[0]
             recon_img = torch.max(reconstruction.detach().cpu(), dim=1, keepdim=True)[0]
             indi_img = torch.max(ind_rec.cpu(), dim=1, keepdim=True)[0]
@@ -283,7 +311,7 @@ def main(args):
             # torch.save(target, os.path.join(model_load_path, "target-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
             # torch.save(bev_seq, os.path.join(model_load_path, "bev-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
             # torch.save(ind_rec, os.path.join(model_load_path, "individual-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
-            exit(1)
+            # exit(1)
 
         running_loss_test.update(loss)
         et.set_postfix(loss=running_loss_test.avg)
@@ -354,14 +382,14 @@ if __name__ == "__main__":
         "--mask_ratio", default=0.50, type=float, help="The input mask ratio"
     )
     parser.add_argument(
-        "--mask", default="random", type=str, choices=["random", "complement"], help="Used in MAE training"
+        "--mask", default="complement", type=str, choices=["random", "complement"], help="Used in MAE training"
     )
     parser.add_argument(
         "--warmup_epochs", default=4, type=int, help="The number of warm up epochs"
     )
     parser.add_argument("--min_lr", default=0., type=float, help="minimum learning rate")
     parser.add_argument(
-        "--time_stamp", default=2, type=int, help="The total number of time stamp to use"
+        "--time_stamp", default=1, type=int, help="The total number of time stamp to use"
     )
     parser.add_argument(
         "--mae_model", default="fusion_bev_mae_vit_base_patch8", type=str, 
@@ -372,6 +400,19 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--weight_decay", default=0.05, type=float, help="Used in MAE training"
+    )
+    ## args for vector quantization
+    parser.add_argument(
+        "--decay", default=0., type=float, help="used in vector quantization"
+    )
+    parser.add_argument(
+        "--commitment_cost", default=0.25, type=float, help="Used in vector quantization"
+    )
+    parser.add_argument(
+        "--num_vq_embeddings", default=512, type=int, help="Used in vector quantization"
+    )
+    parser.add_argument(
+        "--vq_embedding_dim", default=64, type=int, help="Used in vector quantization"
     )
     ## ----------------------
     parser.add_argument(
