@@ -250,10 +250,13 @@ class VQVAEModel(nn.Module):
 
     def forward(self, x):
         z = self._encoder(x)
+        # print("after encoder z", z.size())
         z = self._pre_vq_conv(z)
+        # print("pre quantized z", z.size())
+        # exit(1)
         loss, quantized, perplexity, _ = self._vq_vae(z)
-        # x_recon = self._decoder(quantized)
-        x_recon = self._decoder(z)
+        x_recon = self._decoder(quantized)
+        # x_recon = self._decoder(z)
         return loss, x_recon, perplexity
 
 

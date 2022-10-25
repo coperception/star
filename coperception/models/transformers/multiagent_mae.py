@@ -1112,7 +1112,7 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         result = self.late_fusion(ind_result, trans_matrices, num_agent_tensor, batch_size)
         # print(result.size())
         # ind_result = self.unpatchify(pred)
-        return loss, result, mask, ind_result
+        return loss, result, latent, ind_result
 
     def inference(self, imgs1, imgs_next, teacher, trans_matrices, num_agent_tensor, batch_size, mask_ratio=0.75):
         """
@@ -1134,7 +1134,7 @@ class AmortizedIndivMMAEViT(MultiAgentMaskedAutoencoderViT):
         # result = self.ego_late_fusion(imgs1, imgs1, trans_matrices, num_agent_tensor, batch_size)
         # print(result.size())
         # ind_result = self.unpatchify(pred)
-        return loss, result, mask, ind_result
+        return loss, result, latent, ind_result
 
 
 

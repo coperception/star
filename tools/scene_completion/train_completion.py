@@ -2,6 +2,8 @@ import argparse
 import matplotlib
 matplotlib.use('Agg')
 from multiprocessing.connection import deliver_challenge
+import torch.multiprocessing
+torch.multiprocessing.set_sharing_strategy('file_system')
 import os
 import glob
 
@@ -168,6 +170,9 @@ def main(args):
     if args.com == "ind_mae" or args.com == "joint_mae":
         param_groups = optim_factory.add_weight_decay(model, args.weight_decay)
         optimizer = optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
+    elif args.com == "vqstar":
+        # param_groups = optim_factory.add_weight_decay(model, args.weight_decay)
+        optimizer = optim.Adam(model.parameters(), lr=args.lr) #, betas=(0.9, 0.99))
     else:
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
     criterion = {
@@ -351,17 +356,24 @@ def main(args):
             t.set_postfix(loss=running_loss_disp.avg)
             
             ## if visualize
-            if args.wandb and data_iter_step%200 ==0:
-                # teacher_bev = torch.max(padded_voxel_points_teacher.squeeze(1).permute(0,3,1,2), dim=1, keepdim=True)[0]
-                # pred_bev = torch.max(reconstruction, dim=1, keepdim=True)[0]
-                # teacher_img = wandb.Image(plt.imshow(teacher_bev[0,:,:,:].detach().cpu().permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12))
-                # pred_img = wandb.Image(plt.imshow(pred_bev[0,:,:,:].detach().cpu().permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12)) 
-                # wandb.log({"overfit visualization": [teacher_img, pred_img]})
-                wandb.log({"imme loss": loss})
-                wandb.log({"runnning loss": running_loss_disp.avg})
-                wandb.log({"lr": curr_lr})
-                if args.com == "vqvae" or args.com == "vqstar":
-                    wandb.log({"perplexity": perplexity})
+            if data_iter_step% args.logstep == 0:
+                if args.wandb:
+                    # teacher_bev = torch.max(padded_voxel_points_teacher.squeeze(1).permute(0,3,1,2), dim=1, keepdim=True)[0]
+                    # pred_bev = torch.max(reconstruction, dim=1, keepdim=True)[0]
+                    # teacher_img = wandb.Image(plt.imshow(teacher_bev[0,:,:,:].detach().cpu().permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12))
+                    # pred_img = wandb.Image(plt.imshow(pred_bev[0,:,:,:].detach().cpu().permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12)) 
+                    # wandb.log({"overfit visualization": [teacher_img, pred_img]})
+                    wandb.log({"imme loss": loss})
+                    wandb.log({"runnning loss": running_loss_disp.avg})
+                    wandb.log({"lr": curr_lr})
+                    if args.com == "vqvae" or args.com == "vqstar":
+                        wandb.log({"perplexity": perplexity})
+                else:
+                    # plain output record
+                    print("**Epoch {} -- iterstep {}** : imme loss {:.f}, running loss {:.f}, current lr {:.f}".format(epoch. data_iter_step, loss, running_loss_disp.avg, curr_lr))
+                    if args.com == "vqvae" or args.com == "vqstar":
+                        print("perplexity", perplexity)
+            
 
                 
 
@@ -485,9 +497,14 @@ if __name__ == "__main__":
         "--weight_decay", default=0.05, type=float, help="Used in MAE training"
     )
     ## ----------------------
+    # logger
     parser.add_argument(
         "--wandb", action="store_true", help="Whether use wandb to visualize"
     )
+    parser.add_argument(
+        "--logstep", default=200, type=int, help="Step interval for making a log."
+    )
+
     # auto_resume
     parser.add_argument(
         "--auto_resume_path",

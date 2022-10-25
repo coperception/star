@@ -443,7 +443,7 @@ class FaFModule(object):
         trans_matrices = data['trans_matrices']
         
         with torch.cuda.amp.autocast(enabled=False):
-            loss, result, _, ind_pred = self.model.inference(bev_seq, 
+            loss, result, latent, ind_pred = self.model.inference(bev_seq, 
                                                     bev_seq_next, 
                                                     bev_teacher, 
                                                     trans_matrices, 
@@ -452,7 +452,7 @@ class FaFModule(object):
                                                     mask_ratio=mask_ratio)
         
         loss_value = loss.item()
-        return loss_value, result, ind_pred.detach()
+        return loss_value, result, ind_pred.detach(), latent.detach()
 
     def step_vae_completion(self, data, batch_size, loss_fn='ce', trainable=False):
         bev_seq = data['bev_seq']
@@ -470,7 +470,7 @@ class FaFModule(object):
         # print("ind_recon", ind_recon.size(), ind_recon.type())
         loss_fn = nn.CrossEntropyLoss()
         recon_error = loss_fn(ind_recon, target)
-        loss = recon_error # + vq_loss
+        loss = recon_error + vq_loss
 
         if trainable:
             self.optimizer.zero_grad()
@@ -540,7 +540,7 @@ class FaFModule(object):
         trans_matrices = data['trans_matrices']
         
         with torch.cuda.amp.autocast(enabled=False):
-            loss, result, _, ind_pred, perplexity = self.model.inference(bev_seq, 
+            loss, result, ind_pred, perplexity, encodings = self.model.inference(bev_seq, 
                                                     bev_seq_next, 
                                                     bev_teacher, 
                                                     trans_matrices, 
@@ -549,7 +549,7 @@ class FaFModule(object):
                                                     mask_ratio=mask_ratio)
         
         loss_value = loss.item()
-        return loss_value, result, ind_pred.detach(), perplexity.detach()
+        return loss_value, result, ind_pred.detach(), perplexity.detach(), encodings.detach()
 
     def get_kd_loss(self, batch_size, data, fused_layer, num_agent, x_5, x_6, x_7):
         if self.kd_flag:

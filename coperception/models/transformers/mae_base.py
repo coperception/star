@@ -10,6 +10,8 @@ from timm.models.vision_transformer import PatchEmbed, Block
 
 from coperception.utils.maeutil.pos_embed import get_2d_sincos_pos_embed
 
+from scipy.cluster.vq import kmeans2
+
 class SegmentationHead(nn.Module):
   '''
   3D Segmentation heads to retrieve semantic segmentation at each scale.
@@ -150,8 +152,12 @@ class STARVectorQuantizer(nn.Module):
         self._num_embeddings = num_embeddings
         
         self._embedding = nn.Embedding(self._num_embeddings, self._embedding_dim)
-        self._embedding.weight.data.uniform_(-1/self._num_embeddings, 1/self._num_embeddings)
+        # self._embedding.weight.data.uniform_(-1/self._num_embeddings, 1/self._num_embeddings)
+        # pre_kmeans = torch.load("kmeans-centers-8192.pt")
+        # print("initializing the vq embedding with pre trained kmeans cluster", pre_kmeans.size())
+        # self._embedding.weight.data.copy_(pre_kmeans)
         self._commitment_cost = commitment_cost
+        self.data_initialized = 0
 
     def forward(self, inputs):
         # convert inputs from BCHW -> BHWC
@@ -160,11 +166,28 @@ class STARVectorQuantizer(nn.Module):
         input_shape = inputs.shape
         # Flatten input
         flat_input = inputs.view(-1, self._embedding_dim)
+
+        # # L2 normalization before calculating the distances:
+        # normed_flat_input = flat_input / torch.linalg.norm(flat_input, dim=1, keepdim=True)
+        # normed_emb = self._embedding.weight / torch.linalg.norm(self._embedding.weight, dim=1, keepdim=True)
+
+        # Following Andrej Karpathy's attempt to fix index collapse:
+        # https://github.com/karpathy/deep-vector-quantization/blob/main/dvq/model/quantize.py
+        if self.training and self.data_initialized ==0:
+            print("run kmeans")
+            rp = torch.randperm(flat_input.size(0))
+            kd = kmeans2(flat_input[rp].data.cpu().numpy(), self._num_embeddings, minit="points")
+            self._embedding.weight.data.copy_(torch.from_numpy(kd[0]))
+            self.data_initialized = 1
         
         # Calculate distances
+        # print(flat_input.size(), self._embedding.weight.size())
         distances = (torch.sum(flat_input**2, dim=1, keepdim=True) 
-                    + torch.sum(self._embedding.weight**2, dim=1)
-                    - 2 * torch.matmul(flat_input, self._embedding.weight.t()))
+                     + torch.sum(self._embedding.weight**2, dim=1, keepdim=True).t()
+                     - 2 * torch.matmul(flat_input, self._embedding.weight.t()))
+        # distances = (torch.sum(normed_flat_input**2, dim=1, keepdim=True) 
+        #             + torch.sum(normed_emb**2, dim=1)
+        #             - 2 * torch.matmul(normed_flat_input, normed_emb.t()))
             
         # Encoding
         encoding_indices = torch.argmin(distances, dim=1).unsqueeze(1)
@@ -174,7 +197,7 @@ class STARVectorQuantizer(nn.Module):
         # print("encoding_indices", encoding_indices.size())
         # Quantize and unflatten
         quantized = torch.matmul(encodings, self._embedding.weight).view(input_shape)
-        
+        # print("quantized shape", quantized.size())
         # Loss
         e_latent_loss = F.mse_loss(quantized.detach(), inputs)
         q_latent_loss = F.mse_loss(quantized, inputs.detach())
@@ -203,8 +226,11 @@ class STARVectorQuantizerEMA(nn.Module):
         
         self.register_buffer('_ema_cluster_size', torch.zeros(num_embeddings))
         self._ema_w = nn.Parameter(torch.Tensor(num_embeddings, self._embedding_dim))
-        self._ema_w.data.normal_()
-        
+        # pre_kmeans = torch.load("kmeans-centers-8192.pt")
+        # print("initializing the vq embedding with pre trained kmeans cluster", pre_kmeans.size())
+        # self._ema_w.data.copy_(pre_kmeans)
+        # self._ema_w.data.normal_()
+        self.data_initialized = 0
         self._decay = decay
         self._epsilon = epsilon
 
@@ -215,6 +241,15 @@ class STARVectorQuantizerEMA(nn.Module):
         
         # Flatten input
         flat_input = inputs.view(-1, self._embedding_dim)
+
+        # Following Andrej Karpathy's attempt to fix index collapse:
+        # https://github.com/karpathy/deep-vector-quantization/blob/main/dvq/model/quantize.py
+        if self.training and self.data_initialized ==0:
+            print("run kmeans")
+            rp = torch.randperm(flat_input.size(0))
+            kd = kmeans2(flat_input[rp].data.cpu().numpy(), self._num_embeddings, minit="points")
+            self._ema_w.data.copy_(torch.from_numpy(kd[0]))
+            self.data_initialized = 1
         
         # Calculate distances
         distances = (torch.sum(flat_input**2, dim=1, keepdim=True) 
@@ -632,6 +667,9 @@ class MultiAgentMaskedAutoencoderViT(nn.Module):
         fused = torch.sum(torch.stack(self.neighbor_feat_list), dim=0)
         if mode == "union":
             fused[fused>0.] = 1.0 
+        if mode == "sum":
+            fused[fused>=0.5] = 1.0
+            fused[fused<0.5] = 0.0
         return fused 
 
     # Question: this can be done by a view or reshape?

@@ -124,7 +124,7 @@ def main(args):
         num_agent=num_agent,
     )
 
-    # model = nn.DataParallel(model)
+    model = nn.DataParallel(model)
     # model_completion = nn.DataParallel(model_completion)
     model = model.to(device)
     model_completion = model_completion.to(device)
@@ -175,12 +175,13 @@ def main(args):
 
     # check if there is valid check point file
     has_valid_pth = False
-    for pth_file in os.listdir(
-        os.path.join(auto_resume_path, f"{args.com}/{cross_path}")
-    ):
-        if pth_file.startswith("det_epoch_") and pth_file.endswith(".pth"):
-            has_valid_pth = True
-            break
+    if auto_resume_path != "":
+        for pth_file in os.listdir(
+            os.path.join(auto_resume_path, f"{args.com}/{cross_path}")
+        ):
+            if pth_file.startswith("det_epoch_") and pth_file.endswith(".pth"):
+                has_valid_pth = True
+                break
 
     if not has_valid_pth:
         print(

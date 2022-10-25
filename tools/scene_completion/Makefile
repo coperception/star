@@ -21,7 +21,7 @@ compression_seg_train_data := /mnt/NAS/data/dekun/V2X-Sim-seg-draco/train
 compression_seg_test_data := /mnt/NAS/data/dekun/V2X-Sim-seg-draco/test
 
 # com := mean
-batch_size := 1
+batch_size := 2
 # Where to store the logs
 # logpath := logs-amortized-ts1-complement=classification
 # Train for how many epochs
@@ -32,13 +32,13 @@ fine_tune := 0
 
 # args for mae
 mask := complement
-mask_ratio := 0.5
-time_stamp := 2
+mask_ratio := 0
+time_stamp := 1
 recon := ind
 com := $(recon)_mae
-patch_size := 16
+patch_size := 8
 mae_model := amortized_$(recon)_patch$(patch_size)_light
-lr := 1e-3
+lr := 2e-4
 min_lr := 0.
 exp := main
 test_epoch := 20
@@ -46,10 +46,10 @@ test_epoch := 20
 # args for vqmae
 decay := 0.
 commitment_cost := 0.25
-num_vq_embeddings := 2048
-vq_embedding_dim := 64
+num_vq_embeddings := 8192
+vq_embedding_dim := 32
 # paths
-test_load_path := logs-amortized-ts1-complement-8=light+trydec1/ind_mae/no_cross/completion_epoch_20.pth
+test_load_path := logs-amortized-ts1-complement-8=light/ind_mae/no_cross/completion_epoch_20.pth
 # test_load_path := $(test_model_path)logs-amortized-ts$(time_stamp)-$(mask)-ratio$(mask_ratio)-ps$(patch_size)=$(exp)/$(com)/no_cross/completion_epoch_$(test_epoch).pth
 cnn_test_load_path := /mnt/NAS/data/zjx/ind_fusion/logs=cnn/late/no_cross/completion_epoch_20.pth
 test_batch := 1
@@ -63,10 +63,10 @@ logpath := logs-amortized-ts$(time_stamp)-$(mask)-$(patch_size)=light
 det_logpath := logs-amortized-ts$(time_stamp)-$(mask)=det
 auto_resume_path := $(logpath)
 cnn_logpath := /mnt/NAS/data/zjx/ind_fusion/logs=cnn/
-vqvae_logpath := /mnt/NAS/data/zjx/ind_fusion/logs=vqvae-vae/
+vqvae_logpath := /mnt/NAS/data/zjx/ind_fusion/logs=vqvae-debug/
 vqvae_test_load_path := /mnt/NAS/data/zjx/ind_fusion/logs=vqvae-vae/vqvae/no_cross/completion_epoch_12.pth
-vqstar_logpath := logs-vqstar-ts$(time_stamp)-$(mask)-$(patch_size)-vq$(num_vq_embeddings)dim$(vq_embedding_dim)=light
-vqstar_test_load_path := logs-vqstar-ts$(time_stamp)-$(mask)-$(patch_size)=light/vqstar/no_cross/completion_epoch_20.pth
+vqstar_logpath := logs-vqstar-ts$(time_stamp)-$(mask)-$(patch_size)-vq$(num_vq_embeddings)dim$(vq_embedding_dim)=light+adam+minlr0+kmeansfly
+vqstar_test_load_path := logs-vqstar-ts$(time_stamp)-$(mask)-$(patch_size)-vq$(num_vq_embeddings)dim$(vq_embedding_dim)=light+adam+minlr0+kmeansfly/vqstar/no_cross/completion_epoch_15.pth
 
 debug_completion:
 	python train_completion.py --data $(training_data) --com $(com) --log --batch 1 --nepoch 1 --logpath logs --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) --lr $(lr) --no_cross_road 
@@ -82,6 +82,12 @@ train_completion_vqstar:
 	--logpath $(vqstar_logpath) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) \
 	--decay $(decay) --num_vq_embeddings $(num_vq_embeddings) --commitment_cost $(commitment_cost) --vq_embedding_dim $(vq_embedding_dim) \
 	--lr $(lr) --no_cross_road  --auto_resume_path $(vqstar_logpath) --wandb
+
+train_completion_vqstar_hpc:
+	python train_completion.py --data $(training_data) --com vqstar --log --batch $(batch_size) --nepoch $(nepoch) \
+	--logpath $(vqstar_logpath) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) \
+	--decay $(decay) --num_vq_embeddings $(num_vq_embeddings) --commitment_cost $(commitment_cost) --vq_embedding_dim $(vq_embedding_dim) \
+	--lr $(lr) --no_cross_road  --auto_resume_path $(vqstar_logpath)
 
 train_completion_vqvae:
 	python train_completion.py --data $(training_data) --com vqvae --log --batch $(batch_size) --nepoch $(nepoch) --logpath $(vqvae_logpath) --lr $(lr) --no_cross_road  --auto_resume_path $(vqvae_logpath) --wandb
@@ -106,7 +112,8 @@ test_completion_vqvae:
 
 test_completion_vqstar:
 	python test_completion.py --data $(test_data) --com vqstar --log --batch $(test_batch) \
-	--load_path $(vqstar_test_load_path) --no_cross_road --save_vis
+	--load_path $(vqstar_test_load_path) --no_cross_road --save_vis \
+	--decay $(decay) --num_vq_embeddings $(num_vq_embeddings) --commitment_cost $(commitment_cost) --vq_embedding_dim $(vq_embedding_dim)
 
 test_completion_save:
 	python test_completion.py --data $(test_data) --com $(com) --log --batch $(test_batch) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) --load_path $(test_load_path) --no_cross_road  --save_vis

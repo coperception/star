@@ -203,6 +203,7 @@ def main(args):
     IoUEvaluator = Metrics(nbr_classes=2, num_iterations_epoch=load_epoch)
     faf_module.model.eval()
     
+    # sampled_latents = []
     et = tqdm(test_data_loader)
     for data_iter_step, sample in enumerate(et):
         (
@@ -257,11 +258,11 @@ def main(args):
             # lr_sched.adjust_learning_rate(faf_module.optimizer, data_iter_step / len(test_data_loader) + epoch, args)
             with torch.no_grad():
                 # loss, reconstruction, ind_rec = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=False)
-                loss, reconstruction, ind_rec = faf_module.infer_mae_completion(data, batch_size, args.mask_ratio)
+                loss, reconstruction, ind_rec, latent = faf_module.infer_mae_completion(data, batch_size, args.mask_ratio)
         elif args.com == "vqstar":
             data["bev_seq_next"] = torch.cat(tuple(padded_voxel_point_next_list), 0).to(device)
             with torch.no_grad():
-                loss, reconstruction, ind_rec, perplexity = faf_module.step_vqstar_completion(data, batch_size, args.mask_ratio, trainable=False)
+                loss, reconstruction, ind_rec, perplexity, encodings = faf_module.infer_vqstar_completion(data, batch_size, args.mask_ratio)
         elif args.com == "vqvae":
             with torch.no_grad():
                 loss, reconstruction, ind_rec, perplexity = faf_module.step_vae_completion(data, batch_size, trainable=False)
@@ -288,14 +289,15 @@ def main(args):
         IoUEvaluator.update_IoU()
         # print(IoUEvaluator.every_batch_IoU)
         # save every 100
-        if args.save_vis and data_iter_step%100==0:
+        if args.save_vis and data_iter_step%200==0:
             print(IoUEvaluator.every_batch_IoU[-1])
             target_img = torch.max(target.cpu(), dim=1, keepdim=True)[0]
             recon_img = torch.max(reconstruction.detach().cpu(), dim=1, keepdim=True)[0]
             indi_img = torch.max(ind_rec.cpu(), dim=1, keepdim=True)[0]
             start_agent_idx = 0 if args.no_cross_road else 1
+            print(encodings.size())
             for kid in range(start_agent_idx, num_agent):
-                recon_save = "reconstruction-epc{}-id{}-agent{}.png".format(load_epoch-1, data_iter_step, kid)
+                recon_save = "pure-reconstruction-epc{}-id{}-agent{}.png".format(load_epoch-1, data_iter_step, kid)
                 target_save = "target-epc{}-id{}-agent{}.png".format(load_epoch-1, data_iter_step, kid)
                 indi_save = "individual-epc{}-id{}-agent{}.png".format(load_epoch-1, data_iter_step, kid)
                 plt.imshow(target_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12, cmap="Purples")
@@ -307,6 +309,8 @@ def main(args):
                 plt.imshow(indi_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12, cmap="Purples")
                 plt.axis('off')
                 plt.savefig(os.path.join(model_load_path,indi_save))
+                print("codebook idx:", encodings[kid, :].detach().cpu().nonzero().squeeze())
+            torch.save(encodings.detach().cpu(), os.path.join(model_load_path, "encodings-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
             # torch.save(reconstruction, os.path.join(model_load_path, "reconstruction-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
             # torch.save(target, os.path.join(model_load_path, "target-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
             # torch.save(bev_seq, os.path.join(model_load_path, "bev-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
@@ -316,6 +320,11 @@ def main(args):
         running_loss_test.update(loss)
         et.set_postfix(loss=running_loss_test.avg)
 
+    # print("sampled {} data".format(len(sampled_latents)))
+    # print("each shape", sampled_latents[0].size())
+    # sampled = torch.stack(sampled_latents, dim=0)
+    # torch.save(sampled, os.path.join(model_load_path, "sampled_latent.pth"))
+    # exit()
     # show result
     total_IoU = IoUEvaluator.get_average_IoU()
     print("Occupancy IoU for test set:", total_IoU)

@@ -389,6 +389,8 @@ class VQSTARViT(MultiAgentMaskedAutoencoderViT):
         # x = x[:, 1:, :]
         # print("pred size", x.size())
         # --------------------
+        # x_pred = x_occ
+        # print("x_pred", x_pred.size())
         x_pred = torch.stack((x_free, x_occ), dim=1) # [B, class, C, H, W]
         return x_pred
 
@@ -397,7 +399,10 @@ class VQSTARViT(MultiAgentMaskedAutoencoderViT):
         overwrite the original forward_loss, now calculate loss on the entire image
 
         """
-        target = self.patchify(teacher)
+        # print("teacher", teacher.size())
+        # target = self.patchify(teacher)
+        target = teacher
+        # print("target", target.size())
         if self.norm_pix_loss:
             mean = target.mean(dim=-1, keepdim=True)
             var = target.var(dim=-1, keepdim=True)
@@ -429,11 +434,12 @@ class VQSTARViT(MultiAgentMaskedAutoencoderViT):
         # print("to vq, latent", latent.size())
         vq_loss, quantized, perplexity, encodings = self._vq_star(latent)
         pred = self.forward_decoder(quantized, mask, ids_restore)
-        # loss = self.forward_loss(imgs1, pred)
+        # recon_loss = self.forward_loss(imgs1, pred)
         recon_loss = self.forward_bce_loss(imgs1, pred)
         # recon_loss = self.forward_focal_loss(imgs1, pred)
         # result = self.unpatchify(pred)
         ind_result = torch.argmax(torch.softmax(pred, dim=1), dim=1)
+        # ind_result = pred
         result = self.late_fusion(ind_result, trans_matrices, num_agent_tensor, batch_size)
         # print(result.size())
         # ind_result = self.unpatchify(pred)
@@ -451,18 +457,20 @@ class VQSTARViT(MultiAgentMaskedAutoencoderViT):
         latent, mask, ids_restore = self.forward_encoder(imgs1, imgs_next, mask_ratio)
         # latent: [BAT, L, D]
         vq_loss, quantized, perplexity, encodings = self._vq_star(latent)
+        # torch.save(quantized.detach().cpu(), "debug-epc15-id0-quantized.pt")
         pred = self.forward_decoder(quantized, mask, ids_restore)
-        # loss = self.forward_loss(imgs1, pred)
-        # loss = self.forward_bce_loss(imgs1, pred)
-        recon_loss = self.forward_focal_loss(imgs1, pred)
+        # recon_loss = self.forward_loss(imgs1, pred)
+        recon_loss = self.forward_bce_loss(imgs1, pred)
+        # recon_loss = self.forward_focal_loss(imgs1, pred)
         # print(imgs1.size(), imgs1.type())
         ind_result = torch.argmax(torch.softmax(pred, dim=1), dim=1)
-        result = self.ego_late_fusion(ind_result, imgs1, trans_matrices, num_agent_tensor, batch_size)
+        # ind_result = pred
+        # result = self.ego_late_fusion(ind_result, imgs1, trans_matrices, num_agent_tensor, batch_size)
         # result = self.ego_late_fusion(imgs1, imgs1, trans_matrices, num_agent_tensor, batch_size)
-        # print(result.size())
+        result = self.late_fusion(ind_result, trans_matrices, num_agent_tensor, batch_size)
         # ind_result = self.unpatchify(pred)
         loss = recon_loss + vq_loss
-        return loss, result, mask, ind_result, perplexity
+        return loss, result, ind_result, perplexity, encodings
 
 
 def vq_amo_individual_star_patch8_dec256d4b(**kwargs):
