@@ -157,7 +157,7 @@ class STARVectorQuantizer(nn.Module):
         # print("initializing the vq embedding with pre trained kmeans cluster", pre_kmeans.size())
         # self._embedding.weight.data.copy_(pre_kmeans)
         self._commitment_cost = commitment_cost
-        self.data_initialized = 0
+        self.data_initialized = 1
 
     def forward(self, inputs):
         # convert inputs from BCHW -> BHWC

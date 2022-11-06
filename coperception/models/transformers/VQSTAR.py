@@ -465,9 +465,9 @@ class VQSTARViT(MultiAgentMaskedAutoencoderViT):
         # print(imgs1.size(), imgs1.type())
         ind_result = torch.argmax(torch.softmax(pred, dim=1), dim=1)
         # ind_result = pred
-        # result = self.ego_late_fusion(ind_result, imgs1, trans_matrices, num_agent_tensor, batch_size)
+        result = self.ego_late_fusion(ind_result, imgs1, trans_matrices, num_agent_tensor, batch_size)
         # result = self.ego_late_fusion(imgs1, imgs1, trans_matrices, num_agent_tensor, batch_size)
-        result = self.late_fusion(ind_result, trans_matrices, num_agent_tensor, batch_size)
+        # result = self.late_fusion(ind_result, trans_matrices, num_agent_tensor, batch_size)
         # ind_result = self.unpatchify(pred)
         loss = recon_loss + vq_loss
         return loss, result, ind_result, perplexity, encodings

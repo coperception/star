@@ -2,3 +2,10 @@ __pycache__
 dist/
 site/
 *.egg-info/
+.vscode
+tools/scene_completion/cnn=baseline
+tools/scene_completion/compression-baseline
+tools/scene_completion/logs*
+tools/scene_completion/wandb
+tools/scene_completion/*.pt
+tools/scene_completion/*.pth

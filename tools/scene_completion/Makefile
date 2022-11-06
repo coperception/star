@@ -65,8 +65,8 @@ auto_resume_path := $(logpath)
 cnn_logpath := /mnt/NAS/data/zjx/ind_fusion/logs=cnn/
 vqvae_logpath := /mnt/NAS/data/zjx/ind_fusion/logs=vqvae-debug/
 vqvae_test_load_path := /mnt/NAS/data/zjx/ind_fusion/logs=vqvae-vae/vqvae/no_cross/completion_epoch_12.pth
-vqstar_logpath := logs-vqstar-ts$(time_stamp)-$(mask)-$(patch_size)-vq$(num_vq_embeddings)dim$(vq_embedding_dim)=light+adam+minlr0+kmeansfly
-vqstar_test_load_path := logs-vqstar-ts$(time_stamp)-$(mask)-$(patch_size)-vq$(num_vq_embeddings)dim$(vq_embedding_dim)=light+adam+minlr0+kmeansfly/vqstar/no_cross/completion_epoch_15.pth
+vqstar_logpath := logs-vqstar-ts$(time_stamp)-$(mask)-$(patch_size)-vq$(num_vq_embeddings)dim$(vq_embedding_dim)=light+adam+minlr0+recon
+vqstar_test_load_path := logs-vqstar-ts$(time_stamp)-$(mask)-$(patch_size)-vq$(num_vq_embeddings)dim$(vq_embedding_dim)=light+adam+minlr0+kmeansfly+decopos-b-vq/vqstar/no_cross/completion_epoch_10.pth
 
 debug_completion:
 	python train_completion.py --data $(training_data) --com $(com) --log --batch 1 --nepoch 1 --logpath logs --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) --lr $(lr) --no_cross_road 

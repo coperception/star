@@ -356,7 +356,7 @@ def main(args):
             t.set_postfix(loss=running_loss_disp.avg)
             
             ## if visualize
-            if data_iter_step% args.logstep == 0:
+            if data_iter_step % args.logstep == 0:
                 if args.wandb:
                     # teacher_bev = torch.max(padded_voxel_points_teacher.squeeze(1).permute(0,3,1,2), dim=1, keepdim=True)[0]
                     # pred_bev = torch.max(reconstruction, dim=1, keepdim=True)[0]
@@ -370,7 +370,7 @@ def main(args):
                         wandb.log({"perplexity": perplexity})
                 else:
                     # plain output record
-                    print("**Epoch {} -- iterstep {}** : imme loss {:.f}, running loss {:.f}, current lr {:.f}".format(epoch. data_iter_step, loss, running_loss_disp.avg, curr_lr))
+                    print("**Epoch {} -- iterstep {}** : imme loss {:.6f}, running loss {:.6f}, current lr {:.6f}".format(epoch, data_iter_step, loss, running_loss_disp.avg, curr_lr))
                     if args.com == "vqvae" or args.com == "vqstar":
                         print("perplexity", perplexity)
             

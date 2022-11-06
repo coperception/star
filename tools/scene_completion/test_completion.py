@@ -309,7 +309,7 @@ def main(args):
                 plt.imshow(indi_img[kid,:,:,:].permute(1,2,0).squeeze(-1).numpy(), alpha=1.0, zorder=12, cmap="Purples")
                 plt.axis('off')
                 plt.savefig(os.path.join(model_load_path,indi_save))
-                print("codebook idx:", encodings[kid, :].detach().cpu().nonzero().squeeze())
+                # print("codebook idx:", encodings[kid, :].detach().cpu().nonzero().squeeze())
             torch.save(encodings.detach().cpu(), os.path.join(model_load_path, "encodings-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
             # torch.save(reconstruction, os.path.join(model_load_path, "reconstruction-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
             # torch.save(target, os.path.join(model_load_path, "target-epc{}-id{}.pt".format(load_epoch-1, data_iter_step)))
