@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="description"
+        content="Multi-Robot-Scene-Completion-Towards-Task-Agnostic-CoPerception">
+  <meta name="keywords" content="Scene completion, Collaborative Perception, Robotic exploration">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- <title>AirDet</title> -->
+
+  <!-- Global site tag (gtag.js) - Google Analytics -->
+  <!-- <script async src="https://www.googletagmanager.com/gtag/js?id=G-PYVRSFMDRL"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+
+    function gtag() {
+      dataLayer.push(arguments);
+    }
+
+    gtag('js', new Date());
+
+    gtag('config', 'G-PYVRSFMDRL');
+  </script> -->
+  <link rel="icon" type="image/png" href="./static/images/ai4ce.png"> 
+  <link href="https://fonts.googleapis.com/css?family=Google+Sans|Noto+Sans|Castoro"
+        rel="stylesheet">
+
+  <link rel="stylesheet" href="./static/css/bulma.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-carousel.min.css">
+  <link rel="stylesheet" href="./static/css/bulma-slider.min.css">
+  <link rel="stylesheet" href="./static/css/fontawesome.all.min.css">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/gh/jpswalsh/academicons@1/css/academicons.min.css">
+  <link rel="stylesheet" href="./static/css/index.css">
+  <link rel="icon" href="./static/images/ai4ce.png">
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+  <script defer src="./static/js/fontawesome.all.min.js"></script>
+  <script src="./static/js/bulma-carousel.min.js"></script>
+  <script src="./static/js/bulma-slider.min.js"></script>
+  <script src="./static/js/index.js"></script>
+</head>
+<body>
+
+<nav class="navbar" role="navigation" aria-label="main navigation">
+  <div class="navbar-brand">
+    <a role="button" class="navbar-burger" aria-label="menu" aria-expanded="false">
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+    </a>
+  </div>
+  <!-- <div class="navbar-menu">
+    <div class="navbar-start" style="flex-grow: 1; justify-content: center;">
+      <a class="navbar-item" href="https://jaraxxus-me.github.io/">
+      <span class="icon">
+          <i class="fas fa-home"></i>
+      </span>
+      </a>
+
+      <div class="navbar-item has-dropdown is-hoverable">
+        <a class="navbar-link">
+          More Research
+        </a>
+        <div class="navbar-dropdown">
+          <a class="navbar-item" href="https://ieeexplore.ieee.org/document/9561564">
+            ADTrack - ICRA 2021
+          </a>
+          <a class="navbar-item" href="https://openaccess.thecvf.com/content/ICCV2021/papers/Cao_HiFT_Hierarchical_Feature_Transformer_for_Aerial_Tracking_ICCV_2021_paper.pdf">
+            HiFT - ICCV 2021
+          </a>
+        </div>
+      </div>
+    </div> -->
+
+  </div>
+</nav>
+
+
+<section class="hero">
+  <div class="hero-body">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered">
+        <div class="column has-text-centered">
+          <!-- <h1 class="title is-1 publication-title"><img src="./static/images/drone.svg" width="120">AirDet&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</h1> -->
+          <h1 class="title is-2 publication-title">Multi Robot Scene Completion: Towards Task-agnostic Collaborative Perception</h1>
+          <div class="column is-full_width">
+            <h2 class="title is-4">CoRL 2022</h2>
+          </div>
+          <div class="is-size-5 publication-authors">
+            <span class="author-block">
+              <a href="https://roboticsyimingli.github.io">Yiming Li*</a><sup>1</sup>,</span>
+            <span class="author-block">
+              <a href="https://juexzz.github.io">Juexiao Zhang*</a><sup>1</sup>,</span>
+            <span class="author-block">
+              <a href="https://dekun.me">Dekun Ma</a><sup>1</sup>,
+            </span>
+            <span class="author-block">
+              <a href="https://yuewang.xyz">Yue Wang</a><sup>2</sup>,
+            </span>
+            <span class="author-block">
+              <a href="https://scholar.google.com/citations?user=YeG8ZM0AAAAJ&hl=en">Chen Feng</a><sup>1</sup>
+            </span>
+
+          </div>
+
+          <div class="is-size-5 publication-authors">
+            <span class="author-block"><sup>1</sup>New York University</span>
+          </div>
+          <div class="is-size-5 publication-authors">
+            <span class="author-block"><sup>2</sup>Massachusetts Institute of Technology</span>
+          </div>
+
+          <div class="column has-text-centered">
+            <div class="publication-links">
+              <!-- PDF Link. -->
+              <span class="link-block">
+                <a href="https://openreview.net/forum?id=hW0tcXOJas2"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fas fa-file-pdf"></i>
+                  </span>
+                  <span>Paper</span>
+                </a>
+              </span>
+              <span class="link-block">
+                <a href=""
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="ai ai-arxiv"></i>
+                  </span>
+                  <span>arXiv(Coming)</span>
+                </a>
+              </span>
+              <!-- Video Link. -->
+              <!-- <span class="link-block">
+                <a href="https://www.youtube.com/watch?v=MrKrnHhk8IA"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fab fa-youtube"></i>
+                  </span>
+                  <span>Video</span>
+                </a>
+              </span> -->
+              <!-- Code Link. -->
+              <span class="link-block">
+                <a href="https://github.com/coperception/Multi-Robot-Scene-Completion"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fab fa-github"></i>
+                  </span>
+                  <span>Code</span>
+                  </a>
+              </span>
+              <!-- Video Link. -->
+              <span class="link-block">
+                <a href=""
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fab fa-youtube"></i>
+                  </span>
+                  <span>Video(Coming)</span>
+                </a>
+              </span>
+              <!-- Dataset Link. -->
+              <!-- <span class="link-block">
+                <a href="https://github.com/Jaraxxus-Me/AirDet"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="far fa-images"></i>
+                  </span>
+                  <span>Data</span>
+                </a>
+              </span> -->
+              <!-- <span class="link-block">
+                <a href="https://github.com/Jaraxxus-Me/AirDet_ROS"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fas fa-robot"></i>
+                  </span>
+                  <span>ROS</span>
+                </a>
+              </span> -->
+              <!-- <span class="link-block">
+                <a href="https://zhuanlan.zhihu.com/p/545249730"
+                   class="external-link button is-normal is-rounded is-dark">
+                  <span class="icon">
+                      <i class="fas fa-blog"></i>
+                  </span>
+                  <span>Blog</span>
+                </a>
+              </span> -->
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- Paper video. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Video introduction is coming soon</h2>
+        <div class="publication-video">
+          <!-- <iframe src="https://www.youtube.com/embed/i59ifEZK5XM"
+                  frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe> -->
+        </div>
+      </div>
+    </div>
+    <!--/ Paper video. -->
+  </div>
+</section>
+
+<section class="hero teaser">
+  <div class="container is-max-desktop">
+    <div class="hero-body">
+
+      <img src="static\images\csc-figures-task-shorter.pdf" class="center"/>
+      <!-- <video id="teaser" autoplay muted loop height="100%">
+        <source src="./static/images/SUBT_video.mp4"
+                type="video/mp4">
+      </video> -->
+      <!-- <img class="rounded" src="./media/nice-slam/teaser.png" > -->
+      <br><br><br>
+      <!-- <h2 class="subtitle has-text-centered">
+        
+    </h2> -->
+    <!-- <h2 class="subtitle has-text-centered">
+      (The <span style="color:#000000;">black</span> / <span style="color:#ff0000;">red</span> lines are the ground truth / predicted camera trajectory)
+    </h2> -->
+    <h2 class="is-size-6 has-text-centered"><strong>Task-specific vs Task-agnostic collaboration.</strong> Task-specific paradigm learns different models with different losses for each task. Whereas for task-agnostic, reconstruction of the multi-robot scene is learned, which is independent from yet still usable by all downstream tasks.</h2>
+    
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+        <!-- Paper video. -->
+        <!-- <div class="columns is-centered has-text-centered">
+          <div class="column is-four-fifths">
+            <h2 class="title is-3">Video</h2>
+            <div class="publication-video">
+              <iframe src="https://www.youtube.com/embed/V5hYTz5os0M?rel=0&amp;showinfo=0"
+                      frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+            </div>
+          </div>
+        </div> -->
+        <!--/ Paper video. -->
+      
+    <!-- <br> -->
+    <!-- Abstract. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Abstract</h2>
+        <div class="content has-text-justified">
+          <p>
+            Collaborative perception learns how to share information among multiple robots to perceive the environment better than individually done. Past research on this has been task-specific, such as object detection and semantic segmentation. However, this may lead to different information sharing for different tasks, which could hinder the large-scale deployment of collaborative perception. We propose the first task-agnostic collaborative perception paradigm that learns a single collaboration module in a self-supervised manner for different downstream tasks. This is done by a novel task termed \textit{multi-robot scene completion}, where each individual robot learns to effectively share information for reconstructing a complete scene viewed by all robots. Moreover, we propose a spatial-temporal-aware autoencoder that amortizes over time the communication cost by spatial sub-sampling and temporal mixing when sharing information. We conduct extensive experiments with various baselines to validate our method's effectiveness on scene completion and collaborative perception tasks in autonomous driving.
+          </p>
+        </div>
+      </div>
+    </div>
+    <!--/ Abstract. -->
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- <br> -->
+    <!-- Abstract. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-four-fifths">
+        <h2 class="title is-3">Contribution</h2>
+        <div class="content has-text-justified">
+          <li>
+            We propose a brand-new task-agnostic collaborative perception framework based on multi-robot scene completion, decoupling the collaboration learning from downstream tasks.         
+          </li>
+          <li>
+            We propose asynchronous training and synchronous inference with a shared autoencoder to solve multi-robot scene completion, eliminating the need for synchronous data for collaboration learning.
+          </li>
+          <li>
+            We develop a novel spatio-temporal-aware autoencoder (STAR) that reconstructs scenes based on temporally mixed information. It amortizes the spatial communication volume over time to improve the performance-bandwidth trade-off.
+          </li>
+          <li>
+            We conduct extensive experiments to verify our method's effectiveness in autonomous driving settings, in terms of scene completion and downstream perception tasks.
+          </li>
+        </div>
+      </div>
+    </div>
+    <!--/ Abstract. -->
+  </div>
+</section>
+
+<section class="section">
+  <div class="container is-max-desktop">
+    <!-- Method. -->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-full_width">
+        <hr>
+        <h2 class="title is-3">Method</h2>
+        <br>
+        <img src="static\images\main.pdf" class="center"/>
+        <div class="content has-text-justified">
+          <br>  
+          <p>
+            <strong>Asynchronous training and synchronous inference</strong>. In the top right, the asynchronous training does not require communication between robots, while <strong>synchronous training</strong>, shown in the bottom right, requires communication and optimized with regards to each specific task loss. The <strong>synchronous inference</strong> is illustrated on the left. The <i>sender<\i> transmit encoded representations to the <i>receiver</i>. The <i>receiver</i> uses a mixture of spatio-temporal tokens to complete the  scene observation.
+          </p>
+        </div>
+      </div>
+    </div>
+    <hr>
+
+    
+    <!-- Applications.-->
+    <div class="columns is-centered has-text-centered">
+      <div class="column is-full_width">
+        <h2 class="title is-3">Qualitative&nbsp;&nbsp;Results</h2>
+      </div>
+    </div>
+    <p>
+      &nbsp
+    </p>
+    <!-- <h3 class="title is-4">Attention of Detection Head</h3> -->
+
+    <div class="column is-full_width">
+      <img src="static\images\vis-scene-completion.pdf" class="center"/>
+      <div class="content has-text-justified">
+        <br>  
+        <p>
+          Visualization of our <strong>scene completion </strong> results on different scenes of V2X-Sim [1]. The three rows from top to bottom each represent: the ground truth scene observation made by the multiple robots presented at the same scene at the same time, the completed scene output by our model based on each robot's individual obervation and their corresponding poses,
+          and the residual, or difference, between the ground truth and the prediction, which is the part the model fails to predict.
+        </p>
+        </p>
+      </div>
+    </div>
+
+    <div class="column is-full_width">
+      <img src="static\images\vis-detection.pdf" class="center"/>
+      <div class="content has-text-justified">
+        <br>  
+        <p>
+          Visualization of our <strong> object detection </strong> results on different scenes of V2X-Sim [1]. The ground truth and the completed scene observation are presented on the first two rows, and the detection results on the bottom row. The <span style="color:#ff0000;">red</span> boxes are predicted bounding boxes, and the <span style="color:#00CC66;">green</span>
+boxes are the ground truth. 
+        </p>
+        </p>
+      </div>
+    </div>
+
+    <div class="column is-full_width">
+      <img src="static\images\vis-segmantation.pdf" class="center"/>
+      <div class="content has-text-justified">
+        <br>  
+        <p>
+          Visualization of our <strong>semantic segmantation</strong> results on different scenes of V2X-Sim [1]. On the bottom row, different colors represent different semantic labels.
+        </p>
+        </p>
+      </div>
+    </div>
+   
+</div>
+</section>
+
+
+<section class="section" id="BibTeX">
+  <div class="container is-max-desktop content">
+    <h2 class="title">BibTeX</h2>
+    <pre><code> This part will be updated once we submit the camera ready.
+    </code></pre>
+  </div>
+</section>
+
+
+<!-- <section class="section" id="Acknowledgements">
+  <div class="container is-max-desktop content">
+    <h2 class="title">Acknowledgements</h2>
+    The work was done when Bowen Li and Pranay Reddy were interns at The Robotics Institute, CMU. The authors would like to thank all members of the Team Explorer for providing data collected from the DARPA Subterranean Challenge. Our code is built upon <a href="https://github.com/fanq15/FewX">FewX</a>, for which we sincerely express our gratitute to the authors.
+  </div>
+</section> -->
+
+
+<footer class="footer">
+  <div class="container">
+    <div class="content has-text-centered">
+    </div>
+    <div class="columns is-centered">
+      <div class="column is-8">
+        <div class="content">
+          <p>
+            This website is licensed under a <a rel="license"
+                                                href="http://creativecommons.org/licenses/by-sa/4.0/">Creative
+            Commons Attribution-ShareAlike 4.0 International License</a>.
+            This webpage template is from <a href="https://github.com/nerfies/nerfies.github.io">Nerfies</a>. 
+            We sincerely thank <a href="https://keunhong.com/">Keunhong Park</a> for developing and open-sourcing this template.
+          </p>
+        </div>
+      </div>
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
