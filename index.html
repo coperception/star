@@ -204,15 +204,15 @@
   <div style="text-align: center; justify-content: center; display: flex; margin-bottom: 20px;">
     <div style="margin-bottom: 5pt; width: 30%; margin-left: 2%; margin-right: 2%; position: relative;">
       <p style="margin-bottom: 1pt;">Scene completion</p>
-      <video autoplay="" loop="" muted="" style="width: 80%"><source src="static/videos/reconstruction-agent0-fps5.mp4" type="video/mp4"> </video>
+      <img src = 'https://s3.bmp.ovh/imgs/2022/11/16/897da3f4b24caf04.gif' width="200" height="200">
     </div>
     <div style="margin-bottom: 5pt; width: 30%; position: relative;">
       <p style="margin-bottom: 1pt;">Object detection</p>
-      <video autoplay="" loop="" muted="" style="width: 80%"><source src="static/videos/det-agent0-fps5.mp4" type="video/mp4"> </video>
+      <img src = 'https://s3.bmp.ovh/imgs/2022/11/16/9b7901d158f44579.gif' width="200" height="200">
     </div>
     <div style="margin-bottom: 5pt; width: 30%; margin-left: 2%; margin-right: 2%; position: relative;">
       <p style="margin-bottom: 1pt;">Semantic segmantation</p>
-      <video autoplay="" loop="" muted="" style="width: 80%"><source src="static/videos/seg-agent0-fps5-post.mp4" type="video/mp4"> </video>
+      <img src = 'https://s3.bmp.ovh/imgs/2022/11/16/d7e7a0eada2ff34c.gif' width="200" height="200">
     </div>
   </div>
   <div style="text-align: center; justify-content: center; display: flex; margin-left: 5%; margin-right: 5%;"> 
@@ -282,7 +282,9 @@
         <h2 class="title is-3">Abstract</h2>
         <div class="content has-text-justified">
           <p>
-            Collaborative perception learns how to share information among multiple robots to perceive the environment better than individually done. Past research on this has been task-specific, such as object detection and semantic segmentation. However, this may lead to different information sharing for different tasks, which could hinder the large-scale deployment of collaborative perception. We propose the first task-agnostic collaborative perception paradigm that learns a single collaboration module in a self-supervised manner for different downstream tasks. This is done by a novel task termed \textit{multi-robot scene completion}, where each individual robot learns to effectively share information for reconstructing a complete scene viewed by all robots. Moreover, we propose a spatial-temporal-aware autoencoder that amortizes over time the communication cost by spatial sub-sampling and temporal mixing when sharing information. We conduct extensive experiments with various baselines to validate our method's effectiveness on scene completion and collaborative perception tasks in autonomous driving.
+            Collaborative perception learns how to share information among multiple robots to perceive the environment better than individually done. Past research on this has been task-specific, such as detection or segmentation. Yet this leads to different information sharing for different tasks, hindering the large-scale deployment of collaborative perception. 
+            We propose the first task-agnostic collaborative perception paradigm that learns a single collaboration module in a self-supervised manner for different downstream tasks. This is done by a novel task termed <i>multi-robot scene completion</i> (MRSC), where each robot learns to effectively share information for reconstructing a complete scene viewed by all robots. 
+            Moreover, we propose a spatiotemporal autoencoder (STAR) that amortizes over time the communication cost by spatial sub-sampling and temporal mixing. Extensive experiments validate our method's effectiveness on scene completion and collaborative perception in autonomous driving scenarios.
           </p>
         </div>
       </div>
@@ -300,16 +302,16 @@
         <h2 class="title is-3">Contribution</h2>
         <div class="content has-text-justified">
           <li>
-            We propose a brand-new task-agnostic collaborative perception framework based on multi-robot scene completion, decoupling the collaboration learning from downstream tasks.         
+            We propose a brand-new task-agnostic collaborative perception framework based on multi-robot scene completion (MRSC), decoupling the collaboration learning from downstream tasks.
           </li>
           <li>
-            We propose asynchronous training and synchronous inference with a shared autoencoder to solve multi-robot scene completion, eliminating the need for synchronous data for collaboration learning.
+            We propose asynchronous training and synchronous inference with a shared autoencoder to solve MRSC, eliminating the need for synchronous data for collaboration learning.
           </li>
           <li>
-            We develop a novel spatio-temporal-aware autoencoder (STAR) that reconstructs scenes based on temporally mixed information. It amortizes the spatial communication volume over time to improve the performance-bandwidth trade-off.
+            We develop a novel spatiotemporal autoencoder (STAR) that reconstructs scenes based on temporally mixed information. It amortizes the spatial communication volume over time to improve the performance-bandwidth trade-off. 
           </li>
           <li>
-            We conduct extensive experiments to verify our method's effectiveness in autonomous driving settings, in terms of scene completion and downstream perception tasks.
+            We conduct extensive experiments to verify our method's effectiveness for scene completion and downstream perception in autonomous driving scenarios.
           </li>
         </div>
       </div>
