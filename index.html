@@ -199,7 +199,29 @@
   </div>
 </section>
 
-<section class="section">
+<section class="section has-text-centered">
+  <h3 class="title is-3">Demo videos</h3>
+  <div style="text-align: center; justify-content: center; display: flex; margin-bottom: 20px;">
+    <div style="margin-bottom: 5pt; width: 30%; margin-left: 2%; margin-right: 2%; position: relative;">
+      <p style="margin-bottom: 1pt;">Scene completion</p>
+      <video autoplay="" loop="" muted="" style="width: 80%"><source src="static/videos/reconstruction-agent0-fps5.mp4" type="video/mp4"> </video>
+    </div>
+    <div style="margin-bottom: 5pt; width: 30%; position: relative;">
+      <p style="margin-bottom: 1pt;">Object detection</p>
+      <video autoplay="" loop="" muted="" style="width: 80%"><source src="static/videos/det-agent0-fps5.mp4" type="video/mp4"> </video>
+    </div>
+    <div style="margin-bottom: 5pt; width: 30%; margin-left: 2%; margin-right: 2%; position: relative;">
+      <p style="margin-bottom: 1pt;">Semantic segmantation</p>
+      <video autoplay="" loop="" muted="" style="width: 80%"><source src="static/videos/seg-agent0-fps5-post.mp4" type="video/mp4"> </video>
+    </div>
+  </div>
+  <div style="text-align: center; justify-content: center; display: flex; margin-left: 5%; margin-right: 5%;"> 
+    <p>The results for object detection and semantic segmantation are obtained by directly feeding the completion output to singe-agent perception models without any fine-tuning.
+      For object detection, the <span style="color:#ff0000;">red</span> boxes are predicted bounding boxes, and the <span style="color:#00CC66;">green</span>
+      boxes are the ground truth.
+    </p>
+  </div>
+  <br>
   <div class="container is-max-desktop">
     <!-- Paper video. -->
     <div class="columns is-centered has-text-centered">
@@ -219,7 +241,7 @@
   <div class="container is-max-desktop">
     <div class="hero-body">
 
-      <img src="static\images\csc-figures-task-shorter.pdf" class="center"/>
+      <img src="static\images\csc-figures-task-shorter.jpg" class="center"/>
       <!-- <video id="teaser" autoplay muted loop height="100%">
         <source src="./static/images/SUBT_video.mp4"
                 type="video/mp4">
@@ -232,8 +254,9 @@
     <!-- <h2 class="subtitle has-text-centered">
       (The <span style="color:#000000;">black</span> / <span style="color:#ff0000;">red</span> lines are the ground truth / predicted camera trajectory)
     </h2> -->
-    <h2 class="is-size-6 has-text-centered"><strong>Task-specific vs Task-agnostic collaboration.</strong> Task-specific paradigm learns different models with different losses for each task. Whereas for task-agnostic, reconstruction of the multi-robot scene is learned, which is independent from yet still usable by all downstream tasks.</h2>
-    
+    <h2 class="is-size-6 has-text-centered"><strong>Task-specific vs Task-agnostic collaboration.</strong> As shown in (a), task-specific paradigm learns different models with different losses for each task. 
+      Whereas for task-agnostic paradigm shown in (b), the model learns to directly reconstruct the multi-robot scene based on each robot's message, which is independent from yet still usable by all downstream tasks.
+    </h2>
     </div>
   </div>
 </section>
@@ -303,7 +326,7 @@
         <hr>
         <h2 class="title is-3">Method</h2>
         <br>
-        <img src="static\images\main.pdf" class="center"/>
+        <img src="static\images\main.jpg" class="center"/>
         <div class="content has-text-justified">
           <br>  
           <p>
@@ -327,7 +350,7 @@
     <!-- <h3 class="title is-4">Attention of Detection Head</h3> -->
 
     <div class="column is-full_width">
-      <img src="static\images\vis-scene-completion.pdf" class="center"/>
+      <img src="static\images\vis-scene-completion.jpg" class="center"/>
       <div class="content has-text-justified">
         <br>  
         <p>
@@ -339,7 +362,7 @@
     </div>
 
     <div class="column is-full_width">
-      <img src="static\images\vis-detection.pdf" class="center"/>
+      <img src="static\images\vis-detection.jpg" class="center"/>
       <div class="content has-text-justified">
         <br>  
         <p>
@@ -351,7 +374,7 @@ boxes are the ground truth.
     </div>
 
     <div class="column is-full_width">
-      <img src="static\images\vis-segmantation.pdf" class="center"/>
+      <img src="static\images\vis-segmantation.jpg" class="center"/>
       <div class="content has-text-justified">
         <br>  
         <p>
