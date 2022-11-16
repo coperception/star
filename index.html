@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="description"
-        content="Multi-Robot-Scene-Completion-Towards-Task-Agnostic-CoPerception">
+        content="star">
   <meta name="keywords" content="Scene completion, Collaborative Perception, Robotic exploration">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- <title>AirDet</title> -->
@@ -144,7 +144,7 @@
               </span> -->
               <!-- Code Link. -->
               <span class="link-block">
-                <a href="https://github.com/coperception/Multi-Robot-Scene-Completion"
+                <a href="https://github.com/coperception/star"
                    class="external-link button is-normal is-rounded is-dark">
                   <span class="icon">
                       <i class="fab fa-github"></i>
@@ -283,7 +283,7 @@
         <div class="content has-text-justified">
           <p>
             Collaborative perception learns how to share information among multiple robots to perceive the environment better than individually done. Past research on this has been task-specific, such as detection or segmentation. Yet this leads to different information sharing for different tasks, hindering the large-scale deployment of collaborative perception. 
-            We propose the first task-agnostic collaborative perception paradigm that learns a single collaboration module in a self-supervised manner for different downstream tasks. This is done by a novel task termed <i>multi-robot scene completion</i> (MRSC), where each robot learns to effectively share information for reconstructing a complete scene viewed by all robots. 
+            We propose the first task-agnostic collaborative perception paradigm that learns a single collaboration module in a self-supervised manner for different downstream tasks. This is done by a novel task termed <i>multi-robot scene completion</i>, where each robot learns to effectively share information for reconstructing a complete scene viewed by all robots. 
             Moreover, we propose a spatiotemporal autoencoder (STAR) that amortizes over time the communication cost by spatial sub-sampling and temporal mixing. Extensive experiments validate our method's effectiveness on scene completion and collaborative perception in autonomous driving scenarios.
           </p>
         </div>
@@ -302,10 +302,10 @@
         <h2 class="title is-3">Contribution</h2>
         <div class="content has-text-justified">
           <li>
-            We propose a brand-new task-agnostic collaborative perception framework based on multi-robot scene completion (MRSC), decoupling the collaboration learning from downstream tasks.
+            We propose a brand-new task-agnostic collaborative perception framework based on multi-robot scene completion, decoupling the collaboration learning from downstream tasks.
           </li>
           <li>
-            We propose asynchronous training and synchronous inference with a shared autoencoder to solve MRSC, eliminating the need for synchronous data for collaboration learning.
+            We propose asynchronous training and synchronous inference with a shared autoencoder to solve the proposed task, eliminating the need for synchronous data for collaboration learning.
           </li>
           <li>
             We develop a novel spatiotemporal autoencoder (STAR) that reconstructs scenes based on temporally mixed information. It amortizes the spatial communication volume over time to improve the performance-bandwidth trade-off. 
@@ -332,7 +332,7 @@
         <div class="content has-text-justified">
           <br>  
           <p>
-            <strong>Asynchronous training and synchronous inference</strong>. In the top right, the asynchronous training does not require communication between robots, while <strong>synchronous training</strong>, shown in the bottom right, requires communication and optimized with regards to each specific task loss. The <strong>synchronous inference</strong> is illustrated on the left. The <i>sender<\i> transmit encoded representations to the <i>receiver</i>. The <i>receiver</i> uses a mixture of spatio-temporal tokens to complete the  scene observation.
+            <strong>Asynchronous training and synchronous inference</strong>. In the top right, the asynchronous training does not require communication between robots, while <strong>synchronous training</strong>, shown in the bottom right, requires communication and optimized with regards to each specific task loss. The <strong>synchronous inference</strong> is illustrated on the left. The <i>sender</i> transmit encoded representations to the <i>receiver</i>. The <i>receiver</i> uses a mixture of spatio-temporal tokens to complete the  scene observation.
           </p>
         </div>
       </div>
