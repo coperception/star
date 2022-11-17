@@ -1,5 +1,7 @@
 # Multi Robot Scene Completion: Towards Task-agnostic Collaborative Perception
 
+[Yiming Li](https://roboticsyimingli.github.io), [Juexiao Zhang](https://juexzz.github.io), [Dekun Ma](https://dekun.me), [Yue Wang](https://yuewang.xyz), [Chen Feng](https://scholar.google.com/citations?user=YeG8ZM0AAAAJ&hl=en)
+
 This readme currently work in progress.
 
 * [ ] a link to our paper
