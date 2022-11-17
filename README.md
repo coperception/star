@@ -49,13 +49,11 @@ More commands and experiment settings are included in the [Makefile](https://git
 
 You can find the training and test scripts at: [tools/scene_completion](https://github.com/coperception/star/raw/main/tools/scene_completion/).
 
-
 ## Dataset:
 
-Our experiments are conducted on the V2X-Sim
-*[1] simulated dataset. Find more about the dataset on the [website](https://ai4ce.github.io/V2X-Sim/).*
+Our experiments are conducted on the V2X-Sim[1] simulated dataset. Find more about the dataset on the [website](https://ai4ce.github.io/V2X-Sim/).
 
-[1] Li, Yiming, et al. "V2X-Sim: Multi-agent collaborative perception dataset and benchmark for autonomous driving." IEEE Robotics and Automation Letters 7.4 (2022): 10914-10921.
+*[1] Li, Yiming, et al. "V2X-Sim: Multi-agent collaborative perception dataset and benchmark for autonomous driving." IEEE Robotics and Automation Letters 7.4 (2022): 10914-10921.*
 
 ## Citation:
 
