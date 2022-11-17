@@ -1,7 +1,7 @@
 numpy
-torch
+torch==1.8.0
 opencv-python
-torchvision
+torchvision==0.9.1
 typing
 nuscenes-devkit==1.0.9
 pyquaternion

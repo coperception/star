@@ -14,11 +14,6 @@ training_data := $(create_data_save_path)/train
 test_data := $(create_data_save_path)/test
 seg_train_data := $(seg_data_path)/train
 seg_test_data := $(seg_data_path)/test
-# Path to the traditional point cloud compression baseline data
-compression_det_train_data := /mnt/NAS/data/dekun/V2X-Sim-det-draco/train
-compression_det_test_data := /mnt/NAS/data/dekun/V2X-Sim-det-bev-compressed/test
-compression_seg_train_data := /mnt/NAS/data/dekun/V2X-Sim-seg-draco/train
-compression_seg_test_data := /mnt/NAS/data/dekun/V2X-Sim-seg-draco/test
 
 # com := mean
 batch_size := 2
@@ -83,12 +78,6 @@ train_completion_vqstar:
 	--decay $(decay) --num_vq_embeddings $(num_vq_embeddings) --commitment_cost $(commitment_cost) --vq_embedding_dim $(vq_embedding_dim) \
 	--lr $(lr) --no_cross_road  --auto_resume_path $(vqstar_logpath) --wandb
 
-train_completion_vqstar_hpc:
-	python train_completion.py --data $(training_data) --com vqstar --log --batch $(batch_size) --nepoch $(nepoch) \
-	--logpath $(vqstar_logpath) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) \
-	--decay $(decay) --num_vq_embeddings $(num_vq_embeddings) --commitment_cost $(commitment_cost) --vq_embedding_dim $(vq_embedding_dim) \
-	--lr $(lr) --no_cross_road  --auto_resume_path $(vqstar_logpath)
-
 train_completion_vqvae:
 	python train_completion.py --data $(training_data) --com vqvae --log --batch $(batch_size) --nepoch $(nepoch) --logpath $(vqvae_logpath) --lr $(lr) --no_cross_road  --auto_resume_path $(vqvae_logpath) --wandb
 
@@ -140,23 +129,11 @@ test_det_vqvae:
 	--resume /mnt/NAS/data/dekun/lowerbound_det_logs/no_cross/epoch_100.pth \
 	--no_cross_road --visualization 0
 
-test_det_compression:
-	python test_codet.py --data $(compression_det_test_data) --com $(com) --log --batch $(batch_size) --nepoch $(nepoch) --logpath ./compression-baseline \
-	--resume_completion $(test_load_path) --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) \
-	--resume /mnt/NAS/data/dekun/lowerbound_det_logs/no_cross/epoch_100.pth \
-	--no_cross_road --visualization 1
-
 test_seg:
 	python test_coseg.py --data $(seg_test_data) --com $(com) --log --batch $(batch_size) --nepoch $(nepoch) --logpath logs-amortized-ts1-complement-8=light-a075-g3 \
 	--resume_completion $(test_load_path) \
 	--resume $(lowerbound_seg_path) --vis \
 	--no_cross_road --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model)
-
-test_seg_compression:
-	python test_coseg.py --data $(compression_seg_test_data) --com $(com) --log --batch $(batch_size) --nepoch $(nepoch) --logpath ./compression-baseline \
-	--resume_completion $(test_load_path) \
-	--resume $(lowerbound_seg_path) --vis \
-	--no_cross_road --mask $(mask) --mask_ratio $(mask_ratio) --time_stamp $(time_stamp) --mae_model $(mae_model) 
 
 test_seg_cnn:
 	python test_coseg.py --data $(seg_test_data) --com late --log --batch $(batch_size) --nepoch $(nepoch) --logpath $(logpath) \

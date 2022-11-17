@@ -9,3 +9,5 @@ tools/scene_completion/logs*
 tools/scene_completion/wandb
 tools/scene_completion/*.pt
 tools/scene_completion/*.pth
+.DS_Store
+static/
