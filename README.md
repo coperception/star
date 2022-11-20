@@ -60,7 +60,7 @@ Our experiments are conducted on the V2X-Sim[1] simulated dataset. Find more abo
 ## Citation:
 
 ```
-@inproceedings{liself,
+@inproceedings{li2022multi,
   title={Multi-Robot Scene Completion: Towards Task-Agnostic Collaborative Perception},
   author={Li, Yiming and Zhang, Juexiao and Ma, Dekun and Wang, Yue and Feng, Chen},
   booktitle={6th Annual Conference on Robot Learning}
