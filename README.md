@@ -2,13 +2,13 @@
 
 [Yiming Li](https://roboticsyimingli.github.io), [Juexiao Zhang](https://juexzz.github.io), [Dekun Ma](https://dekun.me), [Yue Wang](https://yuewang.xyz), [Chen Feng](https://scholar.google.com/citations?user=YeG8ZM0AAAAJ&hl=en)
 
-This readme currently work in progress.
-
-* [ ] a link to our paper
+See our paper on [OpenReview](https://openreview.net/forum?id=hW0tcXOJas2).
 
 ![main](https://github.com/coperception/star/raw/gh-pages/static/images/main.jpg)
 
 ## News:
+
+**[2022-11]** Our [paper](https://coperception.github.io/star/) is camera-ready!
 
 **[2022-10]** The project [website](https://coperception.github.io/star/) is online.
 
