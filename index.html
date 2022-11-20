@@ -305,8 +305,8 @@
         <div class="content has-text-justified">
           <p>
             Collaborative perception learns how to share information among multiple robots to perceive the environment better than individually done. Past research on this has been task-specific, such as detection or segmentation. Yet this leads to different information sharing for different tasks, hindering the large-scale deployment of collaborative perception. 
-            We propose the first task-agnostic collaborative perception paradigm that learns a single collaboration module in a self-supervised manner for different downstream tasks. This is done by a novel task termed <i>multi-robot scene completion</i>, where each robot learns to effectively share information for reconstructing a complete scene viewed by all robots. 
-            Moreover, we propose a spatiotemporal autoencoder (STAR) that amortizes over time the communication cost by spatial sub-sampling and temporal mixing. Extensive experiments validate our method's effectiveness on scene completion and collaborative perception in autonomous driving scenarios.
+            We propose the first <b>task-agnostic collaborative perception paradigm</b> that learns a single collaboration module in a self-supervised manner for different downstream tasks. This is done by a novel task termed <b>multi-robot scene completion</b>, where each robot learns to effectively share information for reconstructing a complete scene viewed by all robots. 
+            Moreover, we propose a <b>spatiotemporal autoencoder (STAR)</b> that amortizes over time the communication cost by spatial sub-sampling and temporal mixing. Extensive experiments validate our method's effectiveness on scene completion and collaborative perception in autonomous driving scenarios.
           </p>
         </div>
       </div>
@@ -324,13 +324,13 @@
         <h2 class="title is-3">Contribution</h2>
         <div class="content has-text-justified">
           <li>
-            We propose a brand-new task-agnostic collaborative perception framework based on multi-robot scene completion, decoupling the collaboration learning from downstream tasks.
+            We propose a brand-new task-agnostic collaborative perception framework based on multi-robot scene completion, <b>decoupling the collaboration learning from downstream tasks</b>.
           </li>
           <li>
-            We propose asynchronous training and synchronous inference with a shared autoencoder to solve the proposed task, eliminating the need for synchronous data for collaboration learning.
+            We propose <b>asynchronous training and synchronous inference</b> with a shared autoencoder to solve the proposed task, eliminating the need for synchronous data for collaboration learning.
           </li>
           <li>
-            We develop a novel spatiotemporal autoencoder (STAR) that reconstructs scenes based on temporally mixed information. It amortizes the spatial communication volume over time to improve the performance-bandwidth trade-off. 
+            We develop a novel spatiotemporal autoencoder (STAR) that reconstructs scenes based on temporally mixed information. It <b>amortizes the spatial communication volume over time</b> to improve the performance-bandwidth trade-off. 
           </li>
           <li>
             We conduct extensive experiments to verify our method's effectiveness for scene completion and downstream perception in autonomous driving scenarios.
