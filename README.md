@@ -8,7 +8,7 @@ See our paper on [OpenReview](https://openreview.net/forum?id=hW0tcXOJas2).
 
 ## News:
 
-**[2022-11]** Our [paper](https://coperception.github.io/star/) is camera-ready!
+**[2022-11]** Our [paper](https://openreview.net/forum?id=hW0tcXOJas2) is camera-ready!
 
 **[2022-10]** The project [website](https://coperception.github.io/star/) is online.
 
