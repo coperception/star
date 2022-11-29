@@ -1,0 +1,19 @@
+name: star
+
+dependencies:
+  - python==3.7
+  - pip
+  - pip:
+    - torch==1.8.1
+    - opencv-python
+    - torchvision==0.9.1
+    - typing
+    - nuscenes-devkit==1.0.9
+    - pyquaternion
+    - numba
+    - matplotlib
+    - mmcv
+    - terminaltables
+    - shapely
+    - coperception==0.0.10
+    - timm==0.3.2
