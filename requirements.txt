@@ -1,5 +1,5 @@
 numpy
-torch==1.8.0
+torch==1.8.1
 opencv-python
 torchvision==0.9.1
 typing
@@ -10,5 +10,5 @@ matplotlib
 mmcv
 terminaltables
 shapely
-coperception
+coperception==0.0.10
 timm==0.3.2
