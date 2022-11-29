@@ -6,7 +6,7 @@ import torch.nn.functional as F
 # Juexiao add for mae -----
 from .misc import NativeScalerWithGradNormCount as NativeScaler
 import math
-from coperception.utils.move_optim import optimizer_to
+from star.utils.move_optim import optimizer_to
 # -------------------------
 
 
