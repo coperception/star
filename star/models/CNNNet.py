@@ -1,4 +1,3 @@
-from coperception.models.det.base import NonIntermediateModelBase
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
@@ -304,7 +303,11 @@ class CNNNet(nn.Module):
         compress_level=0,
         train_completion=True,
     ):
-        super().__init__(config, layer, in_channels, kd_flag, num_agent, compress_level, train_completion)
+        super().__init__()
+        self.config = config
+        self.kd_flag = kd_flag
+        self.in_channels = in_channels
+        self.num_agent = num_agent
         self.train_completion = train_completion
         self.stpn = STPN_KD(config.map_dims[2], compress_level, train_completion)
 
@@ -443,3 +446,26 @@ class CNNNet(nn.Module):
             return result, x_8
         else:
             return result
+
+
+class Conv3D(nn.Module):
+    """3D cnn used in the encoder."""
+
+    def __init__(self, in_channel, out_channel, kernel_size, stride, padding):
+        super(Conv3D, self).__init__()
+        self.conv3d = nn.Conv3d(
+            in_channel,
+            out_channel,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+        )
+        self.bn3d = nn.BatchNorm3d(out_channel)
+
+    def forward(self, x):
+        # input x: (batch, seq, c, h, w)
+        x = x.permute(0, 2, 1, 3, 4).contiguous()  # (batch, c, seq_len, h, w)
+        x = F.relu(self.bn3d(self.conv3d(x)))
+        x = x.permute(0, 2, 1, 3, 4).contiguous()  # (batch, seq_len, c, h, w)
+
+        return x

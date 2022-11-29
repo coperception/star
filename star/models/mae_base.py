@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from timm.models.vision_transformer import PatchEmbed, Block
 
 # from coperception.utils.maeutil.pos_embed import get_2d_sincos_pos_embed
-from utils.pos_embed import get_2d_sincos_pos_embed
+from ..utils.pos_embed import get_2d_sincos_pos_embed
 
 from scipy.cluster.vq import kmeans2
 

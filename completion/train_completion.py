@@ -6,6 +6,7 @@ import torch.multiprocessing
 torch.multiprocessing.set_sharing_strategy('file_system')
 import os
 import sys
+sys.path.append("..")
 import glob
 
 import torch.optim as optim

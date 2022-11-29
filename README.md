@@ -20,10 +20,10 @@ Collaborative perception learns how to share information among multiple robots t
 
 ## Usage:
 
-Our code is based on the [coperception](https://coperception.readthedocs.io/en/latest/) library. Currently we have included the library in this repository for direct reproducibility convenience. You can run the following command to have the library installed.
+Our code is based on the [coperception](https://coperception.readthedocs.io/en/latest/) library. You can run the following command to have the library installed.
 
 ```bash
-pip install -e .
+pip install coperception
 ```
 
 The work is tested with:
@@ -36,20 +36,20 @@ The work is tested with:
 To train, run:
 
 ```bash
-cd tools/scene_completion/
+cd completion/
 make train_completion
 ```
 
 To test the trained model on scene completion:
 
 ```bash
-cd tools/scene_completion/
+cd completion/
 make test_completion
 ```
 
-More commands and experiment settings are included in the [Makefile](https://github.com/coperception/star/raw/main/tools/scene_completion/Makefile).
+More commands and experiment settings are included in the [Makefile](https://github.com/coperception/star/raw/main/completion/Makefile).
 
-You can find the training and test scripts at: [tools/scene_completion](https://github.com/coperception/star/raw/main/tools/scene_completion/).
+You can find the training and test scripts at: [completion](https://github.com/coperception/star/raw/main/completion/).
 
 ## Dataset:
 
@@ -60,7 +60,7 @@ Our experiments are conducted on the V2X-Sim[1] simulated dataset. Find more abo
 ## Citation:
 
 ```
-@inproceedings{liself,
+@inproceedings{li2022multi,
   title={Multi-Robot Scene Completion: Towards Task-Agnostic Collaborative Perception},
   author={Li, Yiming and Zhang, Juexiao and Ma, Dekun and Wang, Yue and Feng, Chen},
   booktitle={6th Annual Conference on Robot Learning}

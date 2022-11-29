@@ -1,15 +1,3 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-
-# This source code is licensed under the license found in the
-# LICENSE file in the root directory of this source tree.
-# --------------------------------------------------------
-# References:
-# timm: https://github.com/rwightman/pytorch-image-models/tree/master/timm
-# DeiT: https://github.com/facebookresearch/deit
-# --------------------------------------------------------
-
-
 # modified MAE to be multiagent MAE
 # Compared to the MAE and spatial temporal MAE, three modifications are made:
 # 1) a compression auto encoder module is added at the end of the encoder (compress) and 
@@ -26,11 +14,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from timm.models.vision_transformer import PatchEmbed, Block
-from mae_base import *
-from utils.pos_embed import get_2d_sincos_pos_embed
+from .mae_base import *
+from ..utils.pos_embed import get_2d_sincos_pos_embed
 import math
 
-from utils.softmax_focal_loss import SoftmaxFocalLoss
+from ..utils.softmax_focal_loss import SoftmaxFocalLoss
 
 
 class FusionMultiAgentMAEViT(MultiAgentMaskedAutoencoderViT):

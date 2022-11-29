@@ -1,6 +1,8 @@
 # test completion using occupancy IoU as the metric
 import argparse
 import os
+import sys
+sys.path.append("..")
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt

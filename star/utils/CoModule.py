@@ -1,19 +1,16 @@
 import torch.nn as nn
-from coperception.utils.detection_util import *
-from coperception.utils.min_norm_solvers import MinNormSolver
 import numpy as np
 import torch
 import torch.nn.functional as F
 
 # Juexiao add for mae -----
-from utils.misc import NativeScalerWithGradNormCount as NativeScaler
+from .misc import NativeScalerWithGradNormCount as NativeScaler
 import math
 from coperception.utils.move_optim import optimizer_to
 # -------------------------
-from coperception.utils.CoDetModule import FaFModule
 
 
-class CoModule(FaFModule):
+class CoModule(object):
     def __init__(self, model, optimizer, com):
         self.mae_loss_scaler = NativeScaler()
         self.model = model

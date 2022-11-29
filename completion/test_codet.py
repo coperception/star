@@ -1,5 +1,7 @@
 import argparse
 import os
+import sys
+sys.path.append("..")
 from copy import deepcopy
 
 import matplotlib
@@ -258,9 +260,9 @@ def main(args):
                 # multi timestamp input bev supported in the data
                 data["bev_seq_next"] = torch.cat(tuple(padded_voxel_point_next_list), 0).to(device)
                 # loss, reconstruction, _ = faf_module.step_mae_completion(data, batch_size, args.mask_ratio, trainable=False)
-                loss, completed_point_cloud, _ = module_completion.infer_mae_completion(data, batch_size=1, mask_ratio=args.mask_ratio)
+                loss, completed_point_cloud, _, _ = module_completion.infer_mae_completion(data, batch_size=1, mask_ratio=args.mask_ratio)
             elif args.com == "vqvae":
-                _, completed_point_cloud, _ = module_completion.step_vae_completion(data, batch_size=1, trainable=False)
+                _, completed_point_cloud, _, _ = module_completion.step_vae_completion(data, batch_size=1, trainable=False)
             else:
                 _, completed_point_cloud = module_completion.step_completion(
                     data, batch_size=1, trainable=False
