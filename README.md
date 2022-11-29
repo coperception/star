@@ -18,20 +18,33 @@ See our paper on [OpenReview](https://openreview.net/forum?id=hW0tcXOJas2).
 
 Collaborative perception learns how to share information among multiple robots to perceive the environment better than individually done. Past research on this has been task-specific, such as detection or segmentation. Yet this leads to different information sharing for different tasks, hindering the large-scale deployment of collaborative perception. We propose the first task-agnostic collaborative perception paradigm that learns a single collaboration module in a self-supervised manner for different downstream tasks. This is done by a novel task termed multi-robot scene completion, where each robot learns to effectively share information for reconstructing a complete scene viewed by all robots. Moreover, we propose a spatiotemporal autoencoder (STAR) that amortizes over time the communication cost by spatial sub-sampling and temporal mixing. Extensive experiments validate our method's effectiveness on scene completion and collaborative perception in autonomous driving scenarios.
 
-## Usage:
-
-Our code is based on the [coperception](https://coperception.readthedocs.io/en/latest/) library. You can run the following command to have the library installed.
-
-```bash
-pip install coperception
-```
-
+## Installation
 The work is tested with:
 
 * python 3.7
-* pytorch 1.8.0
+* pytorch 1.8.1
 * torchvision 0.9.1
 * timm 0.3.2
+
+Download the GitHub repository:
+```bash
+git clone https://github.com/coperception/star.git
+cd star
+```
+
+Create a conda environment with the dependencies:
+```bash
+conda env create -f environment.yml
+conda activate star
+```
+
+If conda installation failed, install the dependencies through pip:  
+(Make sure your Python version is `3.7`)
+```bash
+pip install -r requirements.txt
+```
+
+## Usage:
 
 To train, run:
 
